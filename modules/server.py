@@ -52,6 +52,8 @@ class ScrapeRequest(BaseModel):
 
 class ActionRequest(BaseModel):
     story_name: str
+# Global storage provider initialized once
+STORAGE = get_storage_provider()
 
 @app.get("/", response_class=HTMLResponse)
 async def get_player(request: Request):
@@ -63,15 +65,26 @@ async def get_dashboard(request: Request):
 
 @app.get("/api/stories")
 async def list_stories():
-    storage = get_storage_provider()
-    stories = storage.list_stories()
-    return {"stories": stories}
+    try:
+        print("🔍 API: Listing stories...")
+        stories = STORAGE.list_stories()
+        print(f"📖 Found {len(stories)} stories in storage.")
+        return {"stories": stories}
+    except Exception as e:
+        print(f"❌ Error listing stories: {str(e)}")
+        # Return error as part of JSON to stop the 'Unexpected token I' on frontend
+        return {"stories": [], "error": str(e)}
 
 @app.get("/api/stories/{story_name}")
 async def list_chapters(story_name: str):
-    storage = get_storage_provider()
-    files = storage.list_chapters(story_name)
-    return {"files": files}
+    try:
+        print(f"🔍 API: Listing chapters for {story_name}...")
+        files = STORAGE.list_chapters(story_name)
+        print(f"🎵 Found {len(files)} files for {story_name}.")
+        return {"files": files}
+    except Exception as e:
+        print(f"❌ Error listing chapters: {str(e)}")
+        return {"files": [], "error": str(e)}
 
 @app.get("/stream/{story_name}/{filename}")
 async def stream_audio(story_name: str, filename: str):

@@ -550,7 +550,7 @@ async function loadChapters() {
     }
 
     try {
-        const response = await fetch(`/api/stories/${encodeURIComponent(PlayerState.currentStory)}`);
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/stories/${encodeURIComponent(PlayerState.currentStory)}`);
         const data = await response.json();
         PlayerState.currentFiles = data.files;
 
@@ -843,7 +843,7 @@ async function pollTasks() {
  */
 async function startAction(endpoint, data = {}) {
     try {
-        const response = await fetch(endpoint, {
+        const response = await fetch(CONFIG.API_BASE_URL + endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)

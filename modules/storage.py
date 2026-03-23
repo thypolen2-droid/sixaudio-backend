@@ -33,8 +33,14 @@ class LocalStorageProvider(StorageProvider):
 
 class CloudStorageProvider(StorageProvider):
     def __init__(self, bucket_name: str):
-        self.client = storage.Client()
-        self.bucket = self.client.bucket(bucket_name)
+        try:
+            print(f"📡 Connecting to Firebase Storage bucket: {bucket_name}")
+            self.client = storage.Client()
+            self.bucket = self.client.bucket(bucket_name.replace('gs://', ''))
+            print(f"✅ Bucket connection initialized: {self.bucket.name}")
+        except Exception as e:
+            print(f"❌ Failed to initialize CloudStorageProvider: {str(e)}")
+            raise
 
     def list_stories(self) -> List[str]:
         # Stories are represented as folders at the top level
