@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Modern audio player for audiobook streaming">
+    <meta name="author" content="TTS System">
+    <title>Library - TTS System</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="static/css/player.css">
+</head>
+
+<body>
+    <!-- Main Container -->
+    <div class="library-container">
+        <!-- Header -->
+        <header class="library-header">
+            <div class="header-left">
+                <div class="menu-icon" id="menuIcon" aria-label="Menu">☰</div>
+                <div class="app-brand">
+                    <div class="brand-subtitle">NEURAL SYNC</div>
+                    <div class="brand-title">LIBRARY</div>
+                </div>
+            </div>
+            <button class="search-icon" id="searchIcon" aria-label="Search">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" />
+                    <path d="M13 13L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                </svg>
+            </button>
+        </header>
+
+        <!-- Search Bar (Hidden by default) -->
+        <div class="search-container" id="searchContainer" style="display: none;">
+            <input type="text" class="library-search" id="librarySearch" placeholder="Search your library..."
+                aria-label="Search">
+            <button class="search-close" id="searchClose">×</button>
+        </div>
+
+        <!-- Continue Listening Section -->
+        <section class="continue-section" id="continueSection" style="display: none;">
+            <h2 class="section-label">CONTINUE LISTENING</h2>
+            <div class="continue-card" id="continueCard">
+                <div class="continue-artwork">
+                    <div class="artwork-placeholder">🎵</div>
+                </div>
+                <div class="continue-info">
+                    <h3 class="continue-title" id="continueTitle">Story Title</h3>
+                    <p class="continue-chapter" id="continueChapter">Chapter 1: Introduction</p>
+                    <p class="continue-meta" id="continueMeta">Narrated by AI</p>
+
+                    <div class="continue-progress">
+                        <div class="progress-label">
+                            <span>PROGRESS</span>
+                            <span class="progress-percent" id="continuePercent">0% COMPLETED</span>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" id="continueFill" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div class="continue-actions">
+                        <span class="time-badge" id="continueTime">0:00</span>
+                        <button class="resume-btn" id="resumeBtn">
+                            <svg width="12" height="14" viewBox="0 0 12 14" fill="none">
+                                <path d="M0 0L12 7L0 14V0Z" fill="currentColor" />
+                            </svg>
+                            RESUME
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Your Library Section -->
+        <section class="library-section">
+            <div class="section-header">
+                <h2 class="section-label">YOUR LIBRARY</h2>
+                <button class="see-all-btn" id="seeAllBtn">SEE ALL</button>
+            </div>
+
+            <!-- Library Grid -->
+            <div class="library-grid" id="libraryGrid">
+                <!-- Empty state -->
+                <div class="library-empty" id="libraryEmpty">
+                    <div class="empty-icon">📚</div>
+                    <p>No audiobooks yet</p>
+                    <p class="empty-hint">Use the menu to add stories</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Chapter List View -->
+    <div class="chapter-view" id="chapterView" style="display: none;">
+        <!-- Chapter Header -->
+        <div class="chapter-header">
+            <button class="chapter-back-btn" id="chapterBackBtn" aria-label="Back to library">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+            </button>
+            <h1 class="chapter-view-title" id="chapterViewTitle">Chapters</h1>
+            <button class="chapter-menu-btn" aria-label="Menu">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+                    <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                    <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Chapter Search -->
+        <div class="chapter-search-container">
+            <svg class="chapter-search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" />
+                <path d="M13 13L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+            <input type="text" class="chapter-search" id="chapterSearch" placeholder="Search chapters..."
+                aria-label="Search chapters">
+        </div>
+
+        <!-- Filter Pills -->
+        <div class="chapter-filters">
+            <button class="filter-pill active" data-filter="all">All Chapters</button>
+            <button class="filter-pill" data-filter="unplayed">Unplayed</button>
+            <button class="filter-pill" data-filter="progress">In Progress</button>
+        </div>
+
+        <!-- Chapters List -->
+        <div class="chapters-container" id="chaptersContainer">
+            <!-- Chapters will be populated by JavaScript -->
+        </div>
+    </div>
+
+    <!-- Full Player View -->
+    <div class="player-view" id="playerView" role="region" aria-label="Audio player">
+        <button class="player-close" id="playerClose" title="Close Player" aria-label="Close player">×</button>
+        <div class="player-handle" aria-hidden="true"></div>
+
+        <!-- Album Art -->
+        <div class="album-art" aria-hidden="true">
+            <div class="album-art-text">🎵</div>
+        </div>
+
+        <!-- Track Information -->
+        <div class="track-info">
+            <div class="track-title" id="trackTitle">Chapter Title</div>
+            <div class="track-artist" id="trackArtist">Story Name</div>
+        </div>
+
+        <!-- Progress Waveform -->
+        <div class="progress-container">
+            <div class="waveform" id="waveform" role="progressbar" aria-label="Playback progress" aria-valuemin="0"
+                aria-valuemax="100">
+                <!-- Waveform bars generated by JavaScript -->
+            </div>
+            <div class="time-display">
+                <span id="currentTime" aria-label="Current time">0:00</span>
+                <span id="totalTime" aria-label="Total time">0:00</span>
+            </div>
+        </div>
+
+        <!-- Playback Controls -->
+        <div class="controls" role="group" aria-label="Playback controls">
+            <button class="control-btn" id="shuffleBtn" title="Shuffle" aria-label="Toggle shuffle">🔀</button>
+            <button class="control-btn" id="prevBtn" title="Previous" aria-label="Previous chapter">⏮</button>
+            <button class="control-btn play-btn" id="playBtn" title="Play/Pause" aria-label="Play or pause">▶</button>
+            <button class="control-btn" id="nextBtn" title="Next" aria-label="Next chapter">⏭</button>
+            <button class="control-btn" id="repeatBtn" title="Repeat" aria-label="Toggle repeat">🔁</button>
+        </div>
+
+        <!-- Speed Control -->
+        <div class="speed-control" role="group" aria-label="Playback speed">
+            <button class="speed-btn" data-speed="0.5" aria-label="0.5x speed">0.5x</button>
+            <button class="speed-btn" data-speed="0.75" aria-label="0.75x speed">0.75x</button>
+            <button class="speed-btn active" data-speed="1" aria-label="1x speed">1x</button>
+            <button class="speed-btn" data-speed="1.25" aria-label="1.25x speed">1.25x</button>
+            <button class="speed-btn" data-speed="1.5" aria-label="1.5x speed">1.5x</button>
+            <button class="speed-btn" data-speed="2" aria-label="2x speed">2x</button>
+        </div>
+    </div>
+
+    <!-- Mini Player Bar -->
+    <div class="mini-player" id="miniPlayer" role="region" aria-label="Mini player">
+        <div class="mini-album-art" aria-hidden="true">
+            <div>🎵</div>
+        </div>
+        <div class="mini-track-info">
+            <div class="mini-track-title" id="miniTrackTitle">Chapter Title</div>
+            <div class="mini-track-artist" id="miniTrackArtist">Story Name</div>
+        </div>
+        <div class="mini-controls" role="group" aria-label="Mini player controls">
+            <button class="mini-control-btn" id="miniPrevBtn" title="Previous" aria-label="Previous chapter">⏮</button>
+            <button class="mini-control-btn mini-play-btn" id="miniPlayBtn" title="Play/Pause"
+                aria-label="Play or pause">▶</button>
+            <button class="mini-control-btn" id="miniNextBtn" title="Next" aria-label="Next chapter">⏭</button>
+        </div>
+    </div>
+
+    <!-- Hidden Audio Element -->
+    <audio id="audioPlayer" aria-hidden="true"></audio>
+
+    <!-- Sidebar Menu -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title">MENU</div>
+            <button class="menu-close" id="menuClose">×</button>
+        </div>
+        <nav class="menu-items">
+            <a href="/dashboard" class="menu-item-btn" style="text-decoration: none;">
+                <span class="menu-icon-sm">📊</span> Open Dashboard
+            </a>
+            <div class="menu-divider"></div>
+            <button class="menu-item-btn" id="menuScrapeBtn">
+                <span class="menu-icon-sm">🆕</span> Scrape New Story
+            </button>
+            <button class="menu-item-btn" id="menuCheckUpdatesBtn">
+                <span class="menu-icon-sm">🔄</span> Check for Updates
+            </button>
+            <div class="menu-divider"></div>
+            <div class="menu-section-label">CURRENT STORY</div>
+            <button class="menu-item-btn" id="menuConvertBtn">
+                <span class="menu-icon-sm">🎧</span> Convert to Audio
+            </button>
+            <button class="menu-item-btn" id="menuCleanBtn">
+                <span class="menu-icon-sm">🧹</span> Clean Text Files
+            </button>
+        </nav>
+        <div class="task-status-container" id="taskStatus">
+            <!-- Active tasks will show here -->
+        </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Scrape Modal -->
+    <div class="modal" id="scrapeModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Scrape New Story</h2>
+                <button class="modal-close" id="scrapeModalClose" aria-label="Close modal">×</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">Enter a ScribbleHub or NovelBin chapter URL to start scraping.</p>
+                <div class="input-group">
+                    <label for="scrapeUrl">Story URL</label>
+                    <input type="text" id="scrapeUrl" placeholder="https://...">
+                </div>
+                <div class="checkbox-group" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <label style="color: var(--text-secondary); font-size: 14px; cursor: pointer;">
+                        <input type="checkbox" id="scrapeFast" checked> 🚀 Fast Mode (Reduced delays)
+                    </label>
+                    <label style="color: var(--text-secondary); font-size: 14px; cursor: pointer;">
+                        <input type="checkbox" id="scrapeHeadless" checked> 👻 Headless Mode (Hide browser)
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="scrapeModalCancel">Cancel</button>
+                <button class="btn btn-primary" id="startScrapeBtn">Start Scraping</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="static/js/player.js" defer></script>
+    <script src="static/js/chapter-view.js" defer></script>
+</body>
+
+</html>

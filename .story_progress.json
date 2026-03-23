@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "story_title": "",
+    "story_url": "",
+    "site": "",
+    "created_date": "2026-02-27T15:51:25.752032",
+    "last_updated": "2026-02-27T15:51:25.752732",
+    "status": "active"
+  },
+  "scraping": {
+    "total_chapters": 2,
+    "last_chapter_number": 2,
+    "last_chapter_url": "",
+    "last_chapter_title": "requirements_tui",
+    "last_scrape_date": "2026-02-27T15:51:25.752060",
+    "is_complete": false
+  },
+  "tts": {
+    "total_text_files": 2,
+    "total_audio_files": 2,
+    "last_conversion_date": "2026-02-27T15:51:25.752571",
+    "combined_audio_exists": false,
+    "combined_audio_file": null
+  }
+}

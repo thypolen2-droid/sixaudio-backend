@@ -1,0 +1,22 @@
+.venv
+venv
+__pycache__
+*.pyc
+.gitignore
+.git
+.agent
+.gemini
+Library
+Audios
+output
+*.log
+Dockerfile
+docker-compose.yml
+.env
+# We don't need local scraper dependencies or test data
+test-close-button.html
+test_server_startup.py
+HOW_TO_START.md
+TEXT_CLEANER_GUIDE.md
+BATCH_AUTO_WORKFLOW.md
+scripts

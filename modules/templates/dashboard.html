@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyberpunk TTS - Dashboard</title>
+    <link rel="stylesheet" href="static/css/player.css">
+    <style>
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 25px;
+        }
+
+        .story-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 25px;
+            transition: all var(--transition-normal);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .story-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 0 20px rgba(0, 242, 255, 0.2);
+            transform: translateY(-5px);
+        }
+
+        .story-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .story-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 13px;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 10px;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .stat-value {
+            font-weight: 600;
+        }
+
+        .card-actions {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .action-btn {
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            border: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            color: white;
+            transition: all var(--transition-normal);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--primary);
+        }
+
+        .action-btn.primary {
+            background: var(--primary);
+            color: #000;
+            border: none;
+        }
+
+        .action-btn.primary:hover {
+            box-shadow: 0 0 15px var(--primary);
+        }
+
+        .status-badge {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .status-active {
+            background: rgba(0, 242, 255, 0.2);
+            color: var(--primary);
+        }
+
+        .status-completed {
+            background: rgba(0, 255, 122, 0.2);
+            color: #00ff7a;
+        }
+
+        .back-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: var(--primary);
+        }
+
+        .progress-mini {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .progress-fill-mini {
+            height: 100%;
+            background: var(--primary);
+        }
+    </style>
+</head>
+
+<body class="cyber-bg">
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <div>
+                <a href="/" class="back-link">← BACK TO PLAYER</a>
+                <h1 class="app-title" style="margin-top: 15px;">LIBRARY <span class="cyan-text">DASHBOARD</span></h1>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-primary" id="scrapeNewBtn">🆕 SCRAPE NEW</button>
+                <button class="btn btn-secondary" id="refreshAllBtn">🔄 REFRESH ALL</button>
+            </div>
+        </header>
+
+        <div class="dashboard-grid" id="libraryGrid">
+            <!-- Story cards will be rendered here -->
+            <div class="loading-spinner">SCANNING DATABASE...</div>
+        </div>
+    </div>
+
+    <!-- Re-use Scraping Modal from player.html -->
+    <div class="modal" id="scrapeModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Scrape New Story</h2>
+                <button class="modal-close" id="dashScrapeModalClose" aria-label="Close modal">×</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">Enter a ScribbleHub or NovelBin chapter URL to start scraping.</p>
+                <div class="input-group">
+                    <label for="scrapeUrl">Story URL</label>
+                    <input type="text" id="scrapeUrl" placeholder="https://...">
+                </div>
+                <div class="checkbox-group" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <label style="color: var(--text-secondary); font-size: 14px; cursor: pointer;">
+                        <input type="checkbox" id="scrapeFast" checked> 🚀 Fast Mode (Reduced delays)
+                    </label>
+                    <label style="color: var(--text-secondary); font-size: 14px; cursor: pointer;">
+                        <input type="checkbox" id="scrapeHeadless" checked> 👻 Headless Mode (Hide browser)
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="dashScrapeModalCancel">Cancel</button>
+                <button class="btn btn-primary" id="startScrapeBtn">Start Scraping</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Status Sidebar (Same as player) -->
+    <aside class="sidebar" id="sidebar"
+        style="transform: translateX(100%); left: auto; right: 0; border-right: none; border-left: 1px solid var(--glass-border);">
+        <div class="sidebar-header">
+            <div class="sidebar-title">ACTIVE TASKS</div>
+            <button class="menu-close" id="dashMenuClose">×</button>
+        </div>
+        <div class="task-status-container" id="taskStatus" style="flex: 1; border-top: none;">
+            <!-- Tasks will show here -->
+        </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <script src="static/js/dashboard.js" defer></script>
+</body>
+
+</html>

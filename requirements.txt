@@ -1,0 +1,9 @@
+edge-tts
+rich
+DrissionPage
+pydub
+fastapi
+uvicorn
+qrcode
+jinja2
+python-dotenv
