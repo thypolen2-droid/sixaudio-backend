@@ -90,7 +90,11 @@ async def list_chapters(story_name: str):
 async def stream_audio(story_name: str, filename: str):
     storage = get_storage_provider()
     
-    # If using local storage, return FileResponse
+    # If using Google Drive storage, redirect to the direct URL
+    if hasattr(storage, 'folder_id'): # It's a GoogleDriveStorageProvider
+        url = storage.get_audio_url(story_name, filename)
+        return RedirectResponse(url)
+        
     # If using cloud storage, return a Redirect to the signed URL
     if hasattr(storage, 'bucket'): # It's a CloudStorageProvider
         url = storage.get_audio_url(story_name, filename)
