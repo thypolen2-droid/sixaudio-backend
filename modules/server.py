@@ -4,7 +4,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import uvicorn
 import socket
-import qrcode
+try:
+    import qrcode
+except ImportError:
+    qrcode = None
+
 import os
 import asyncio
 import time
@@ -106,10 +110,13 @@ async def start_server(host="0.0.0.0", port=8000, library_path="Library"):
     print(f"💻 LOCAL ACCESS: http://localhost:{port}")
     print(f"📱 NETWORK ACCESS: http://{IP}:{port}\n" + "=" * 60)
     
-    qr = qrcode.QRCode()
-    qr.add_data(f"http://{IP}:{port}")
-    qr.make(fit=True)
-    qr.print_ascii(invert=True)
+    if qrcode:
+        qr = qrcode.QRCode()
+        qr.add_data(f"http://{IP}:{port}")
+        qr.make(fit=True)
+        qr.print_ascii(invert=True)
+    else:
+        print("[Notice] qrcode library not installed, skipping QR code display.")
     print("=" * 60 + "\nPress Ctrl+C to stop the server\n")
 
     config = uvicorn.Config(app, host=host, port=port, log_level="error")
