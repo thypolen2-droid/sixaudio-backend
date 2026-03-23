@@ -7,3 +7,5 @@ uvicorn
 qrcode
 jinja2
 python-dotenv
+google-cloud-storage
+tqdm
