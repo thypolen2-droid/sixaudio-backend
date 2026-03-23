@@ -18,8 +18,18 @@ from pydantic import BaseModel
 
 # Internal imports
 from .storage import get_storage_provider
-from .scraper import NovelScraper
-from .tts import TTSManager, TTSConfig
+
+# Scraper and TTS are only needed locally
+try:
+    from .scraper import NovelScraper
+except ImportError:
+    NovelScraper = None
+
+try:
+    from .tts import TTSManager, TTSConfig
+except ImportError:
+    TTSManager = None
+    TTSConfig = None
 
 # Global instance for Cloud Run
 app = FastAPI(title="Cyberpunk TTS Player")
