@@ -6,6 +6,17 @@
  */
 
 // ============================================
+// CONFIGURATION
+// ============================================
+const CONFIG = {
+    // If running on Firebase/Cloud, use the Render backend URL. 
+    // If local, use relative paths.
+    API_BASE_URL: (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
+                  ? '' 
+                  : 'https://sixaudio-backend.onrender.com'
+};
+
+// ============================================
 // STATE MANAGEMENT
 // ============================================
 const PlayerState = {
@@ -43,7 +54,7 @@ const ProgressTracker = {
 
             // Also save to server for cross-device sync
             try {
-                await fetch('/api/progress/save', {
+                await fetch(CONFIG.API_BASE_URL + '/api/progress/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(progress)
@@ -62,7 +73,7 @@ const ProgressTracker = {
     async load() {
         try {
             // Try loading from server first for cross-device sync
-            const response = await fetch('/api/progress/load');
+            const response = await fetch(CONFIG.API_BASE_URL + '/api/progress/load');
             if (response.ok) {
                 const serverProgress = await response.json();
                 if (serverProgress && serverProgress.story) {
@@ -198,7 +209,7 @@ let availableStories = [];
  */
 async function loadLibrary() {
     try {
-        const response = await fetch('/api/stories');
+        const response = await fetch(CONFIG.API_BASE_URL + '/api/stories');
         const data = await response.json();
         availableStories = data.stories || [];
 
@@ -512,7 +523,7 @@ function updateWaveform() {
  */
 async function loadStories() {
     try {
-        const response = await fetch('/api/stories');
+        const response = await fetch(CONFIG.API_BASE_URL + '/api/stories');
         const data = await response.json();
 
         data.stories.forEach(story => {
@@ -788,7 +799,7 @@ function toggleSidebar(show) {
  */
 async function pollTasks() {
     try {
-        const response = await fetch('/api/tasks/status');
+        const response = await fetch(CONFIG.API_BASE_URL + '/api/tasks/status');
         const tasks = await response.json();
 
         const taskIds = Object.keys(tasks);

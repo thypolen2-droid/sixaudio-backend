@@ -2,6 +2,14 @@
  * CYBERPUNK TTS - DASHBOARD LOGIC
  */
 
+const CONFIG = {
+    // If running on Firebase/Cloud, use the Render backend URL. 
+    // If local, use relative paths.
+    API_BASE_URL: (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
+                  ? '' 
+                  : 'https://sixaudio-backend.onrender.com'
+};
+
 const DOM = {
     libraryGrid: document.getElementById('libraryGrid'),
     taskStatus: document.getElementById('taskStatus'),
@@ -46,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 async function fetchLibrary() {
     try {
-        const response = await fetch('/api/library/status');
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/library/status`);
         const data = await response.json();
 
         if (data.error) {
@@ -144,7 +152,7 @@ function openScrapeForStory(url) {
 }
 async function triggerAction(action, storyName) {
     try {
-        const response = await fetch(`/api/actions/${action}`, {
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/actions/${action}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ story_name: storyName })
@@ -162,7 +170,7 @@ async function startScraping() {
     if (!url) return alert('Enter URL');
 
     try {
-        const response = await fetch('/api/actions/scrape', {
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/actions/scrape`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -181,7 +189,7 @@ async function startScraping() {
 
 async function checkUpdates() {
     try {
-        await fetch('/api/actions/check-updates');
+        await fetch(`${CONFIG.API_BASE_URL}/api/actions/check-updates`);
         toggleSidebar(true);
         pollTasks();
     } catch (error) {
@@ -194,7 +202,7 @@ async function checkUpdates() {
  */
 async function pollTasks() {
     try {
-        const response = await fetch('/api/tasks/status');
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/tasks/status`);
         const tasks = await response.json();
 
         // Update global task state for card rendering

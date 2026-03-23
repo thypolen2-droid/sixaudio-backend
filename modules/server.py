@@ -55,11 +55,11 @@ class ActionRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def get_player(request: Request):
-    return TEMPLATES.TemplateResponse("player.html", {"request": request})
+    return TEMPLATES.TemplateResponse(request=request, name="player.html")
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def get_dashboard(request: Request):
-    return TEMPLATES.TemplateResponse("dashboard.html", {"request": request})
+    return TEMPLATES.TemplateResponse(request=request, name="dashboard.html")
 
 @app.get("/api/stories")
 async def list_stories():
