@@ -1,7 +1,10 @@
 import os
 from pathlib import Path
 from typing import List, Dict, Optional
-from google.cloud import storage
+try:
+    from google.cloud import storage
+except ImportError:
+    storage = None
 import datetime
 
 class StorageProvider:
