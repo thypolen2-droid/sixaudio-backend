@@ -3,12 +3,11 @@
  */
 
 const CONFIG = {
-    // If running on local network (IP), hostname (localhost), or development, use relative paths.
-    // ONLY use the production backend if specifically on one of our cloud domains.
-    API_BASE_URL: (
-        window.location.hostname.includes('onrender.com') || 
-        window.location.hostname.includes('firebaseapp.com')
-    ) ? 'https://sixaudio-backend.onrender.com' : ''
+    // If running on Firebase/Cloud, use the Render backend URL. 
+    // If local, use relative paths.
+    API_BASE_URL: (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
+                  ? '' 
+                  : 'https://sixaudio-backend.onrender.com'
 };
 
 const DOM = {

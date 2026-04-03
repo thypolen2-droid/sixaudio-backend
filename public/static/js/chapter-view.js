@@ -7,33 +7,18 @@
  * Select a story and show chapter list view
  */
 async function selectStoryForChapterView(storyName) {
-    console.log('📚 Navigating to story:', storyName);
+    console.log('📚 Selected story:', storyName);
 
-    // If already playing this story, just show the view
-    if (PlayerState.currentStory === storyName && PlayerState.currentFiles.length > 0) {
-        showChapterView(storyName);
-        return;
-    }
+    PlayerState.currentStory = storyName;
+    PlayerState.currentFiles = [];
+    PlayerState.currentIndex = -1;
 
     try {
         const response = await fetch(`/api/stories/${encodeURIComponent(storyName)}`);
         const data = await response.json();
 
         if (data.files && data.files.length > 0) {
-            // Update the state ONLY if we are starting a clean navigation 
-            // OR if the player is currently idle for another story.
-            // If the user wants to play this new story, the click on a CHAPTER card 
-            // should handle the actual playback start.
-            
-            // For now, load files into state to render them
-            PlayerState.currentStory = storyName;
             PlayerState.currentFiles = data.files;
-            
-            // If we are NOT already playing the current file, reset index
-            if (!PlayerState.isPlaying) {
-                PlayerState.currentIndex = -1;
-            }
-            
             console.log('📑 Loaded', data.files.length, 'chapters');
             showChapterView(storyName);
         } else {
@@ -137,14 +122,6 @@ function renderChapterCards(chaptersToRender = null) {
             </div>
         `;
     }).join('');
-
-    // Scroll into view if there's an in-progress chapter
-    setTimeout(() => {
-        const activeCard = container.querySelector('.chapter-card.in-progress');
-        if (activeCard) {
-            activeCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    }, 300);
 }
 
 /**

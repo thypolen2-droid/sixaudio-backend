@@ -8,28 +8,12 @@
 // ============================================
 // CONFIGURATION
 // ============================================
-/**
- * Debug Log on UI
- */
-const debugLog = (msg, level = 'info') => {
-    const el = document.getElementById('debugOutput');
-    if (!el) return;
-    const item = document.createElement('div');
-    const color = level === 'error' ? '#f00' : (level === 'success' ? '#0f0' : '#0ff');
-    item.style.color = color;
-    item.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    el.appendChild(item);
-    el.parentElement.scrollTop = el.scrollHeight;
-    console.log(`[DEBUG] ${msg}`);
-};
-
 const CONFIG = {
-    // If running on local network (IP), hostname (localhost), or development, use relative paths.
-    // ONLY use the production backend if specifically on one of our cloud domains.
-    API_BASE_URL: (
-        window.location.hostname.includes('onrender.com') || 
-        window.location.hostname.includes('firebaseapp.com')
-    ) ? 'https://sixaudio-backend.onrender.com' : ''
+    // If running on Firebase/Cloud, use the Render backend URL. 
+    // If local, use relative paths.
+    API_BASE_URL: (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
+                  ? '' 
+                  : 'https://sixaudio-backend.onrender.com'
 };
 
 // ============================================
@@ -225,15 +209,9 @@ let availableStories = [];
  */
 async function loadLibrary() {
     try {
-        debugLog('Fetching library from: ' + (CONFIG.API_BASE_URL || '/') + '/api/stories');
-        const response = await fetch(CONFIG.API_BASE_URL + '/api/stories?t=' + Date.now());
-        
-        if (!response.ok) throw new Error('HTTP status ' + response.status);
-        
+        const response = await fetch(CONFIG.API_BASE_URL + '/api/stories');
         const data = await response.json();
         availableStories = data.stories || [];
-
-        debugLog('Success: Found ' + availableStories.length + ' stories');
 
         console.log('📚 Loaded', availableStories.length, 'stories');
 
@@ -253,7 +231,6 @@ async function loadLibrary() {
         await updateContinueListening();
 
     } catch (error) {
-        debugLog('Error loading library: ' + error.message, 'error');
         console.error('Error loading library:', error);
         DOM.libraryGrid.innerHTML = `
             <div class="library-empty">
@@ -272,7 +249,7 @@ function renderLibraryGrid(stories) {
     DOM.libraryEmpty.style.display = 'none ';
 
     DOM.libraryGrid.innerHTML = stories.map((story, index) => `
-        <div class="story-card" data-story="${story}" onclick="selectStoryForChapterView('${story}')" style="animation-delay: ${index * 0.05}s">
+        <div class="story-card" data-story="${story}" onclick="selectStoryForChapterView('${story}')">
             <div class="story-card-artwork">
                 ${getStoryIcon(index)}
             </div>
@@ -306,7 +283,7 @@ function renderLibraryGrid(stories) {
  * Get emoji icon for story based on index
  */
 function getStoryIcon(index) {
-    const icons = ['📖', '🎭', '🚀', '🏰', '🔮', '⚔️', '🌟', '🎪', '🌊', '🎨', '🎵', '🎬', '🌌', '🐉', '🕯️', '🧿', '🧬', '🧭'];
+    const icons = ['📖', '🎭', '🚀', '🏰', '🔮', '⚔️', '🌟', '🎪', '🌊', '🎨', '🎵', '🎬'];
     return icons[index % icons.length];
 }
 
@@ -670,13 +647,9 @@ function updateChapterActiveState(activeIndex) {
  */
 function updateTrackInfo(file) {
     const title = file.replace('.mp3', '');
-    const folderIcon = '<span style="font-size: 0.8em; margin-left: 8px; opacity: 0.6; vertical-align: middle;">📁</span>';
-    
-    // Set text and icon
-    DOM.trackTitle.innerHTML = title + folderIcon;
+    DOM.trackTitle.textContent = title;
     DOM.trackArtist.textContent = PlayerState.currentStory;
-    
-    DOM.miniTrackTitle.innerHTML = title + folderIcon;
+    DOM.miniTrackTitle.textContent = title;
     DOM.miniTrackArtist.textContent = PlayerState.currentStory;
 }
 
@@ -970,55 +943,25 @@ function initializeEventListeners() {
 
     // Player Close Button
     if (DOM.playerClose) {
+        console.log('✅ Player close button found, adding event listener');
         DOM.playerClose.addEventListener('click', (e) => {
+            console.log('❌ Close button clicked!');
             e.preventDefault();
             e.stopPropagation();
             DOM.playerView.classList.remove('active');
             DOM.miniPlayer.classList.add('active');
         });
+    } else {
+        console.error('❌ Player close button NOT found!');
     }
 
     // Mini player click - open full player
     if (DOM.miniPlayer) {
         DOM.miniPlayer.addEventListener('click', (e) => {
-            // Don't trigger if clicking on control buttons or title (which now has its own listener)
-            if (!e.target.closest('.mini-control-btn') && !e.target.closest('.mini-track-title')) {
+            // Don't trigger if clicking on control buttons
+            if (!e.target.closest('.mini-control-btn')) {
                 DOM.playerView.classList.add('active');
                 DOM.miniPlayer.classList.remove('active');
-            }
-        });
-    }
-
-    // Navigation: Click episode title to go to story folder
-    if (DOM.trackTitle) {
-        DOM.trackTitle.style.cursor = 'pointer';
-        DOM.trackTitle.title = 'Go to story folder';
-        DOM.trackTitle.addEventListener('click', () => {
-            if (PlayerState.currentStory) {
-                // Minimize player
-                DOM.playerView.classList.remove('active');
-                DOM.miniPlayer.classList.add('active');
-                // Navigate to chapter list
-                if (typeof selectStoryForChapterView === 'function') {
-                    selectStoryForChapterView(PlayerState.currentStory);
-                } else {
-                    console.error('selectStoryForChapterView not found');
-                }
-            }
-        });
-    }
-
-    if (DOM.miniTrackTitle) {
-        DOM.miniTrackTitle.style.cursor = 'pointer';
-        DOM.miniTrackTitle.title = 'Go to story folder';
-        DOM.miniTrackTitle.addEventListener('click', (e) => {
-            e.stopPropagation(); // Avoid opening full player
-            if (PlayerState.currentStory) {
-                if (typeof selectStoryForChapterView === 'function') {
-                    selectStoryForChapterView(PlayerState.currentStory);
-                } else {
-                    console.error('selectStoryForChapterView not found');
-                }
             }
         });
     }
@@ -1229,18 +1172,6 @@ async function initializePlayer() {
     initializeEventListeners();
     initializeSearch();
 
-    // Handle initial story from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const initialStory = urlParams.get('story');
-    if (initialStory) {
-        console.log('Loading initial story from URL:', initialStory);
-        const storyCard = Array.from(document.querySelectorAll('.story-card'))
-            .find(card => card.dataset.name === initialStory);
-        if (storyCard) {
-            storyCard.click();
-        }
-    }
-
     console.log('✅ Audio Player Ready');
 }
 
@@ -1254,21 +1185,6 @@ if (document.readyState === 'loading') {
 // ============================================
 // EXPORT FOR TESTING (if needed)
 // ============================================
-// Debug Console Toggle (5 taps on title)
-let titleClicks = 0;
-document.querySelector('.app-title').addEventListener('click', () => {
-    titleClicks++;
-    if (titleClicks >= 5) {
-        const debugBox = document.getElementById('debugConsole');
-        debugBox.style.display = debugBox.style.display === 'none' ? 'block' : 'none';
-        debugBox.style.pointerEvents = debugBox.style.display === 'none' ? 'none' : 'auto';
-        debugLog('Debug console toggled. Hostname: ' + window.location.hostname);
-        titleClicks = 0;
-    }
-    setTimeout(() => { if (titleClicks > 0) titleClicks--; }, 3000);
-});
-
-debugLog('App initialized. Env: ' + (CONFIG.API_BASE_URL ? 'Cloud' : 'Local'));
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         PlayerState,

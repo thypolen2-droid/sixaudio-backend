@@ -162,7 +162,7 @@ class GoogleDriveStorageProvider(StorageProvider):
 
 def get_storage_provider() -> StorageProvider:
     # Use the Google Drive Folder ID provided by the user
-    drive_folder_id = os.environ.get("DRIVE_FOLDER_ID", "1H2QPt_u3e0RK-aNN57Bhqywwch5qskf6")
+    drive_folder_id = os.environ.get("DRIVE_FOLDER_ID")
     if drive_folder_id:
         return GoogleDriveStorageProvider(drive_folder_id)
         

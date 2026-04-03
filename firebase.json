@@ -1,6 +1,10 @@
 {
   "hosting": {
-    "public": "modules/templates/static",
+    "public": "public",
+    "rewrites": [
+      { "source": "/dashboard", "destination": "/dashboard.html" },
+      { "source": "**", "destination": "/index.html" }
+    ],
     "ignore": [
       "firebase.json",
       "**/.*",

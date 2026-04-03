@@ -29,11 +29,21 @@ class NovelScraper:
             'next_button_selector': 'css:#next_chap',
             'next_disabled_check': lambda btn: btn.attr('disabled') is not None or '/null' in (btn.link or ''),
             'url_title_pattern': r"/b/(.*?)/chapter",
+        },
+        'webnovel': {
+            'name': 'Webnovel',
+            'domain': 'webnovel.com',
+            'content_selectors': ['.cha-words', '.cha-content', '.j_cha_content', '#cha-content', '_j_cha_cnt'],
+            'title_selectors': ['.cha-hd-title h1', '.cha-title', 'tag:h1'],
+            'next_button_selector': 'css:a.cha-next, css:a.j_next_cha, css:a.j_next_chapter',
+            'next_disabled_check': lambda btn: not btn.attr('href') or 'javascript' in (btn.attr('href') or ''),
+            'url_title_pattern': r"/book/([^/]+?)_\d+/?",
         }
     }
 
-    def __init__(self, output_dir="Library", headless=False, fast_mode=True, event_handler: EventHandler = None):
+    def __init__(self, output_dir="Library", user_data_dir=None, headless=False, fast_mode=True, event_handler: EventHandler = None):
         self.output_dir = output_dir
+        self.user_data_dir = user_data_dir
         self.headless = headless
         self.fast_mode = fast_mode
         self.events = event_handler
@@ -82,9 +92,16 @@ class NovelScraper:
         if self.events: self.events.log("Initializing Browser...", "info") # TODO: use status if implemented
         
         co = ChromiumOptions()
+        # Set user data path first 
+        if self.user_data_dir:
+            co.set_user_data_path(self.user_data_dir)
+            
         co.auto_port()
         co.headless(self.headless)
         co.mute(True)
+        co.set_argument('--no-sandbox')
+        co.set_argument('--disable-blink-features=AutomationControlled') # Hide bot signature
+        co.set_user_agent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
         try:
             page = ChromiumPage(co)
         except Exception as e:
@@ -196,9 +213,16 @@ class NovelScraper:
         if self.events: self.events.log("Initializing Browser...", "info")
 
         co = ChromiumOptions()
+        # Set user data path first 
+        if self.user_data_dir:
+            co.set_user_data_path(self.user_data_dir)
+            
         co.auto_port()
-        co.headless(self.headless)  # Use instance setting
+        co.headless(self.headless)
         co.mute(True)
+        co.set_argument('--no-sandbox')
+        co.set_argument('--disable-blink-features=AutomationControlled') # Hide bot signature
+        co.set_user_agent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
         try:
             page = ChromiumPage(co)
         except Exception as e:
@@ -294,8 +318,29 @@ class NovelScraper:
                 pass
 
     def _get_story_title(self, page, site_config):
-        # ... logic from original scraper ...
-        return get_story_title_logic(page, site_config) # Helper function below
+        try:
+            url = page.url
+            pattern = site_config.get('url_title_pattern')
+            if pattern:
+                match = re.search(pattern, url)
+                if match:
+                    slug = match.group(1)
+                    # Clean up slug
+                    return slug.replace('--', ' - ').replace('-', ' ').replace('_', ' ').title().strip()
+            
+            # Alternative: Get from page metadata or title
+            page_title = page.title
+            if "|" in page_title:
+                return page_title.split("|")[1].strip()
+            if " - " in page_title:
+                parts = page_title.split(" - ")
+                # Usually: [Story Title] - [Chapter Name] - [Site Name]
+                if len(parts) >= 1:
+                    return parts[0].strip()
+            
+            return "Unknown_Story"
+        except:
+            return "Unknown_Story"
 
     def _get_chapter_title(self, page, site_config, index):
         chp_title_ele = None
@@ -311,49 +356,120 @@ class NovelScraper:
         return f"Chapter {index}"
 
     async def _save_chapter_content(self, page, site_config, file_path, title):
-
         content_ele = None
-        timeout = 1 if self.fast_mode else 2
+        # Increase timeout for complex sites like Webnovel
+        timeout = 5 if 'webnovel.com' in page.url else (3 if self.fast_mode else 5)
         
-        # ScribbleHub Age Gate Check
+        # Site-specific handling
         if 'scribblehub.com' in page.url:
             try:
-                # Check for "Confirm Age" button
+                # Age Gate
                 age_gate_btn = page.ele('css:.btn-wi.btn-confirm', timeout=1)
                 if age_gate_btn:
                     self._log("🔞 Bypassing Age Gate...", "warning")
                     age_gate_btn.click()
                     await asyncio.sleep(1)
-
             except: pass
 
+        if 'webnovel.com' in page.url:
+            self._log("📜 Scrolling and waiting for Webnovel heavy assets...", "info")
+            page.scroll.to_bottom()
+            await asyncio.sleep(2) # Extra wait for lazy loading
+
+        # Attempt extraction
         for selector in site_config['content_selectors']:
             try:
+                # Use a slightly longer timeout for the primary selector
                 content_ele = page.ele(selector, timeout=timeout)
-                if content_ele: break
+                if content_ele: 
+                    self._log(f"✅ Found content with selector: {selector}", "debug")
+                    break
             except: continue
         
         if content_ele:
-            chapter_text = content_ele.text.strip()
-            # Safety check: if text is too short, it might still be an error or gate
-            if len(chapter_text) < 100 and 'scribblehub.com' in page.url:
-                # Try one more time to find content after a short wait
-                await asyncio.sleep(1)
+            # Domain-Specific Detailed Extraction (e.g. for Webnovel paragraph comments)
+            if 'webnovel.com' in page.url:
+                # Wait explicitly for text content to appear (Webnovel can be slow)
+                try:
+                    page.wait.ele_display('css:div.cha-paragraph, tag:p', timeout=10)
+                except:
+                    self._log("⏳ Page loading slowly, continuing with current DOM...", "debug")
 
-                content_ele = page.ele(site_config['content_selectors'][0], timeout=2)
-                if content_ele: chapter_text = content_ele.text.strip()
+                # Webnovel specific: Extract from <p>, <div.cha-paragraph>, or <div.dib.pr>
+                # We use a set of selectors to catch various Webnovel layouts
+                paragraphs = content_ele.eles('tag:p')
+                if not paragraphs:
+                    paragraphs = content_ele.eles('css:div.cha-paragraph')
+                if not paragraphs:
+                    # Last ditch effort: find any div with text that looks like a paragraph
+                    paragraphs = [d for d in content_ele.eles('tag:div', timeout=1) if len(d.text.strip()) > 30]
+                
+                self._log(f"📝 Extracting {len(paragraphs)} paragraphs from Webnovel...", "info")
+                
+                if paragraphs:
+                    # Filter out creators thoughts if the user just wants the story
+                    valid_paras = []
+                    for p in paragraphs:
+                        txt = p.text.strip()
+                        if not txt: continue
+                        
+                        # Avoid comment indicators or ads often found inside paragraphs
+                        cls = p.attr('class') or ''
+                        if 'creators-thought' in cls or 'ad-container' in cls:
+                            continue
+                            
+                        # If a paragraph contains another paragraph (sometimes found in Webnovel nesting)
+                        # only add unique content
+                        if txt not in valid_paras:
+                            valid_paras.append(txt)
+                            
+                    chapter_text = "\n\n".join(valid_paras)
+                else:
+                    self._log("⚠️ No paragraph tags found inside content container, falling back to full text.", "warning")
+                    chapter_text = content_ele.text.strip()
+            else:
+                chapter_text = content_ele.text.strip()
+            
+            # Simple content cleaning
+            if 'webnovel.com' in page.url:
+                # Remove common footers of webnovel
+                chapter_text = re.sub(r'Report .*? chapter', '', chapter_text)
+                chapter_text = re.sub(r'Wait for the next .*?', '', chapter_text)
 
-            if len(chapter_text) > 10:
+            content_len = len(chapter_text)
+            if content_len > 10:
+                self._log(f"💾 Saving {content_len} characters to file...", "info")
                 with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(title + "\n\n")
+                    if title.lower() not in chapter_text[:200].lower():
+                        f.write(title + "\n\n")
                     f.write(chapter_text)
                 return True
+            else:
+                self._log(f"⚠️ Content too short ({content_len} chars). Might be empty or protected.", "warning")
         return False
 
     async def _get_next_url(self, page, site_config):
-
         """Get next chapter URL with retry logic for reliability."""
         max_retries = 3
+        
+        # Check for Cloudflare/Challenge
+        if "Just a moment..." in page.title or page.ele('text:Verify you are human'):
+            self._log("🛡️ Cloudflare detection active! Please solve the challenge in the browser window.", "warning")
+            # Wait for user to solve it or for it to redirect
+            for _ in range(30): # Wait up to 30s
+                if "Just a moment..." not in page.title and not page.ele('text:Verify you are human'):
+                    self._log("✅ Challenge cleared!", "success")
+                    break
+                await asyncio.sleep(1)
+            else:
+                self._log("⚠️ Timeout waiting for human verification.", "error")
+                return None
+
+        # For Webnovel, ensure we scroll down to make the button interactable/visible
+        if 'webnovel.com' in page.url:
+            page.scroll.to_bottom()
+            await asyncio.sleep(0.5)
+
         for attempt in range(max_retries):
             try:
                 timeout = 2 if attempt > 0 else (1 if self.fast_mode else 2)
@@ -364,29 +480,30 @@ class NovelScraper:
                     if site_config['next_disabled_check'](next_btn):
                         return None
                     
-                    next_url = next_btn.link
+                    next_url = next_btn.attr('href') or next_btn.link
                     if not next_url or "javascript" in next_url:
-                        # Sometimes the link isn't loaded yet, wait and retry
                         if attempt < max_retries - 1:
                             await asyncio.sleep(0.5)
                             continue
-
                         return None
                     
+                    # Absolute URL check
+                    if next_url.startswith('/'):
+                        from urllib.parse import urlparse
+                        o = urlparse(page.url)
+                        next_url = f"{o.scheme}://{o.netloc}{next_url}"
+
                     return next_url
                 else:
-                    # Button not found, might need to wait for page load
+                    # Button not found, might need to wait for page load or scroll
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(0.5)
+                        page.scroll.to_bottom()
+                        await asyncio.sleep(1)
                         continue
-
-                        
             except Exception as e:
                 if attempt < max_retries - 1:
                     await asyncio.sleep(0.5)
                     continue
-
-                    
         return None
 
     async def fix_empty_chapters(self, story_dir: Path, progress_callback=None):

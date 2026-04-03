@@ -1,50 +1,120 @@
-# Unified TTS & Scraper Toolkit
+# ⚡ CYBERPUNK TTS & NOVEL TOOLKIT v3.0 ⚡
 
-A comprehensive Python application for scraping web novel chapters and converting text to speech using Microsoft Edge TTS (`edge-tts`). Features a highly functional Terminal User Interface (TUI).
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Edge TTS](https://img.shields.io/badge/TTS-Microsoft%20Edge-cyan)](https://github.com/rany2/edge-tts)
 
-## Features
+An immersive, high-performance toolkit for the modern bibliophile. Scrape your favorite web novels, transform them into premium neural audiobooks, and sync them across all your devices with a single click.
 
-- ✅ **Web Scraping**: Built-in scraper for ScribbleHub and NovelBin using DrissionPage.
-- ✅ **Edge TTS Integration**: Completely free text-to-speech using high-quality Microsoft Edge voices. No API keys required.
-- ✅ **Batch Processing**: Automatically convert entire folders of text chapters into audio.
-- ✅ **Automatic Audio Concatenation**: Merges generated TTS files into single audiobook files using FFmpeg.
-- ✅ **Interactive TUI**: Easy-to-use terminal dashboard menu logic.
-- ✅ **Dual-Speaker Mode**: Separate voices for narration and dialogue (using SSML).
-- ✅ **Progress Tracking**: Resume interrupted scraping or TTS tasks seamlessly.
-- ✅ **Auto-Cleaner**: Cleans raw scraped text (removes promo content) before TTS processing.
+---
 
-## Installation
+## 🚀 Key Features
 
-1. **Clone or download this repository**
+### 🛠️ Core Engine
+- **Web Scraping (DrissionPage)**: Bypass bot detection on ScribbleHub, NovelBin, and more.
+- **Advanced TTS (edge-tts v7.2.8)**: Leveraging the latest neural voices from Microsoft Edge with automated 403-error mitigation.
+- **Dual-Speaker Mode**: Intelligent SSML generation that distinguishes between Narrator and Dialogue for an immersive experience.
+- **Batch Processing**: Convert entire volumes in minutes with multi-threaded efficiency.
+- **Audiobook Concatenation**: Seamlessly merge chapters into high-bitrate MP3s using FFmpeg.
+
+### 📱 Connectivity & Cloud
+- **Mobile Sync / Web Player**: A built-in local server with a **premium Web UI**. Listen to your library on any mobile device on your network.
+- **Cloud Sync**: One-click synchronization to **Firebase / Google Cloud Storage**. Access your stories from anywhere in the world.
+- **Local Network Discovery**: Smart IP detection for instant mobile access without manual configuration.
+
+### 🧹 Intelligence & Cleanup
+- **Smart Cleaner**: Automatic removal of "Author Notes", "Promo Content", and site-specific metadata to keep your audio clean.
+- **Corruption Fixer**: Deep scan algorithm that identifies and repairs empty, truncated, or failed audio files instantly.
+- **Progress Tracking**: Persistent JSON-based state management. Never lose your place in a 1,000-chapter epic.
+
+---
+
+## 🛠️ Cyberpunk Tech Stack
+
+| Layer | Technology |
+| :--- | :--- |
+| **Logic** | Python 3.12+ / Asyncio |
+| **TUI** | [Rich](https://github.com/Textualize/rich) (Cyan/Magenta Cyberpunk Theme) |
+| **Scraper** | [DrissionPage](https://github.com/g1879/DrissionPage) |
+| **TTS Engine** | [edge-tts](https://github.com/rany2/edge-tts) (v7.2.8+) |
+| **Server** | Flask / Python-Dotenv |
+| **Frontend** | Vanilla JS / CSS3 (Glassmorphism UI) |
+| **Cloud** | Firebase Storage / Service Accounts |
+| **Audio** | FFmpeg / Pydub |
+
+---
+
+## 📥 Installation
+
+### Prerequisites
+- **Python 3.10+**
+- **FFmpeg**: Required for audio merging. 
+  - *Windows*: `choco install ffmpeg`
+  - *Mac*: `brew install ffmpeg`
+  - *Linux*: `sudo apt install ffmpeg`
+
+### Setup
+1. **Clone the project**:
+   ```bash
+   git clone https://github.com/youruser/cyber-tts-toolkit.git
+   cd cyber-tts-toolkit
+   ```
+
 2. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
-   *Ensure you have also installed FFmpeg on your system and added it to your PATH for audio concatenation.*
 
-## Usage
+3. **Configure Environment** (Optional for Cloud Sync):
+   Create a `.env` file or provide credentials in the UI for Firebase integration.
 
-Start the interactive Terminal User Interface:
+---
+
+## 🎮 Usage
+
+Launch the **Cyberpunk Dashboard**:
 
 ```bash
 python app.py
 ```
 
-From the dashboard, you can:
-1. **Scrape stories** (Provide a URL, it creates a folder and saves `.txt` files in `Library/`).
-2. **Run Batch TTS** (Select a scraped folder to convert text to MP3 files).
-3. **Run Full Auto** (Scrape + TTS automatically).
-4. **Resume** broken tasks or fix corrupted downloads.
+### Dashboard Commands:
+- `1` **Scraping Mode**: Enter a novel URL to begin ingestion.
+- `2` **Batch TTS**: Convert local text folders to audio.
+- `5` **Fix Corrupted**: Auto-repair failed generations.
+- `7` **Mobile Server**: Start the local web portal for mobile listening.
+- `10` **Cloud Sync**: Push your library to the stars.
 
-## Architecture
+---
 
-- `app.py`: Main dashboard and menu application.
-- `modules/scraper.py`: Chromium-based target-site scraping logic.
-- `modules/tts.py`: Audio generation using `edge-tts`.
-- `modules/cleaner.py`: Text sanitization.
-- `Library/`: Default generated folder containing output stories/audio.
+## 📂 Project Structure
 
-## Support & Troubleshooting
+```text
+├── app.py              # Main Entry Point (TUI Dashboard)
+├── modules/
+│   ├── scraper.py     # Chromium-based scraping engine
+│   ├── tts.py         # edge-tts manager & SSML logic
+│   ├── ui.py          # Rich-based UI components
+│   ├── server.py      # Flask Mobile Server
+│   └── storage.py     # Firebase / Local IO management
+├── Library/           # Default Story Output (Scraped Text + MP3s)
+└── static/            # Frontend assets for Web Player
+```
 
-If you encounter missing dependencies, ensure you have ran `pip install -r requirements.txt`.
-For FFmpeg-related errors when concatenating audio, please verify `ffmpeg` is globally accessible via your command line.
+---
+
+## 🛡️ Support & Development
+
+**Encountering 403 Errors?**
+The system now uses `edge-tts 7.2.8+`. If you see connection issues, run:
+`pip install --upgrade edge-tts`
+
+**Missing Chapters?**
+Check the `progress.json` in your story folder to see the scraping status.
+
+**Contributing**
+Pull requests are welcome! For major changes, please open an issue first.
+
+---
+
+*Built with ⚡ by Antigravity*

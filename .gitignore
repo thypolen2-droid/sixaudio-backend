@@ -35,3 +35,14 @@ output/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Browser profiles
+.browser_profile/
+
+# Scratch and test scripts
+test_*.py
+verify_*.py
+check_*.py
+
+# Firebase hidden data
+.firebase/

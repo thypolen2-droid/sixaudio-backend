@@ -32,6 +32,15 @@ SITE_CONFIGS = {
         'next_button_selector': 'css:#next_chap',
         'next_disabled_check': lambda btn: btn.attr('disabled') is not None or '/null' in (btn.link or ''),
         'url_title_pattern': r"/b/(.*?)/chapter",
+    },
+    'webnovel': {
+        'name': 'Webnovel',
+        'domain': 'webnovel.com',
+        'content_selectors': ['.cha-words', '.cha-content', '.j_cha_content', '#cha-content', '_j_cha_cnt'],
+        'title_selectors': ['.cha-hd-title h1', '.cha-title', 'tag:h1'],
+        'next_button_selector': 'css:a.cha-next, css:a.j_next_cha',
+        'next_disabled_check': lambda btn: not btn.attr('href') or 'javascript' in (btn.attr('href') or ''),
+        'url_title_pattern': r"/book/([^/]+?)_\d+/?",
     }
 }
 
@@ -53,23 +62,17 @@ def clean_string(s):
 def get_story_title(page, site_config):
     """Attempts to find the story title from the chapter page."""
     try:
-        # Priority 1: Extract from URL slug if available (Most reliable)
         url = page.url
-        pattern = site_config['url_title_pattern']
-        match = re.search(pattern, url)
-        if match:
-            slug = match.group(1)
-            title = slug.replace('--', ' - ').replace('-', ' ').title()
-            return title.strip()
+        pattern = site_config.get('url_title_pattern')
+        if pattern:
+            match = re.search(pattern, url)
+            if match:
+                slug = match.group(1)
+                return slug.replace('--', ' - ').replace('-', ' ').replace('_', ' ').title().strip()
         
-        # Priority 2: Page Title fallback
         page_title = page.title
         if "|" in page_title:
-            parts = page_title.split("|")
-            if len(parts) >= 2:
-                return parts[1].strip()
-        
-        # Priority 3: First part of page title
+            return page_title.split("|")[1].strip()
         if " - " in page_title:
             return page_title.split(" - ")[0].strip()
         
@@ -99,9 +102,11 @@ def scrape_chain(start_url):
     # Initialize Browser
     with console.status("[bold green]Initializing Browser...[/bold green]", spinner="dots"):
         co = ChromiumOptions()
-        co.auto_port()  # Auto-assign a port and launch new browser
-        co.headless(False)  # Run non-headless to pass Cloudflare more easily
-        co.mute(True)  # Mute audio
+        co.auto_port()
+        co.headless(False)  # Run non-headless for easier bypass
+        co.mute(True)
+        co.set_argument('--no-sandbox')
+        co.set_user_agent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         page = ChromiumPage(co)
     
     current_url = start_url
@@ -186,7 +191,15 @@ def scrape_chain(start_url):
                         continue
                 
                 if content_ele:
-                    chapter_text = content_ele.text.strip()
+                    # Robust extraction for Webnovel to avoid "comment" elements
+                    if 'webnovel.com' in current_url:
+                        paragraphs = content_ele.eles('tag:p')
+                        if paragraphs:
+                            chapter_text = "\n\n".join([p.text.strip() for p in paragraphs if 'creators-thought' not in (p.attr('class') or '')])
+                        else:
+                            chapter_text = content_ele.text.strip()
+                    else:
+                        chapter_text = content_ele.text.strip()
                     
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write(chapter_title_text + "\n\n")

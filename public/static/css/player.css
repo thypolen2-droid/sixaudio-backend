@@ -147,7 +147,6 @@ body {
     background: var(--gradient-bg);
     color: var(--text-primary);
     min-height: 100vh;
-    width: 100%;
     overflow-x: hidden;
     position: relative;
     line-height: 1.6;
@@ -589,12 +588,6 @@ body::after {
     overflow: hidden;
     text-overflow: ellipsis;
     letter-spacing: -0.5px;
-    transition: color var(--transition-normal), transform var(--transition-normal);
-}
-
-.track-title:hover {
-    color: var(--primary-light);
-    transform: translateY(-1px);
 }
 
 .track-artist {
@@ -643,8 +636,7 @@ body::after {
 
 .waveform-bar.active {
     background: var(--gradient-primary);
-    box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
-    transform: scaleY(1.1);
+    box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
 }
 
 .waveform-bar.active::after {
@@ -1227,35 +1219,9 @@ body::after {
 }
 
 @media (max-width: 480px) {
-    .container, 
-    .library-container {
-        padding: 0 var(--space-4);
+    .container {
+        padding: var(--space-4);
         padding-bottom: 100px;
-        width: 100%;
-        max-width: 100vw;
-    }
-
-    .library-section {
-        padding: 0;
-    }
-
-    .library-header {
-        padding: var(--space-4) 0 var(--space-6);
-    }
-
-    .player-view,
-    .mini-player,
-    .sidebar-overlay {
-        width: 100% !important;
-        left: 0 !important;
-        right: 0 !important;
-        max-width: 100vw !important;
-    }
-
-    .modal-content {
-        width: 95%;
-        max-width: none;
-        margin: 0 auto;
     }
 
     .section-title {
@@ -1292,9 +1258,9 @@ body::after {
     position: relative;
     z-index: 1;
     width: 100%;
-    max-width: 600px;
+    max-width: var(--container-max);
     margin: 0 auto;
-    padding: 0 var(--space-5) var(--space-20);
+    padding: 0 var(--space-4) var(--space-20);
     overflow-x: hidden;
 }
 
@@ -1428,8 +1394,8 @@ body::after {
 .continue-card {
     background: linear-gradient(135deg, #2d2d44 0%, #252538 100%);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 32px;
-    padding: var(--space-5);
+    border-radius: 20px;
+    padding: var(--space-4);
     display: flex;
     gap: var(--space-4);
     cursor: pointer;
@@ -1441,6 +1407,33 @@ body::after {
     transform: translateY(-2px);
     box-shadow: 0 20px 25px rgba(0, 0, 0, 0.6);
     border-color: var(--primary);
+}
+
+@media (max-width: 480px) {
+    .continue-card {
+        padding: var(--space-3);
+        gap: var(--space-3);
+        border-radius: 16px;
+    }
+
+    .continue-artwork {
+        width: 80px;
+        height: 80px;
+        font-size: 36px;
+    }
+
+    .continue-title {
+        font-size: 1rem;
+    }
+
+    .continue-chapter {
+        font-size: 0.8rem;
+    }
+
+    .resume-btn {
+        padding: 6px 16px;
+        font-size: 10px;
+    }
 }
 
 .continue-artwork {
@@ -1601,14 +1594,21 @@ body::after {
 
 .library-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-4);
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
     width: 100%;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 380px) {
     .library-grid {
-        gap: var(--space-3);
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-2);
+    }
+}
+
+@media (min-width: 640px) {
+    .library-grid {
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     }
 }
 
@@ -1635,31 +1635,15 @@ body::after {
 }
 
 .story-card {
-    background: var(--surface-glass);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--surface-border);
-    border-radius: var(--radius-xl);
-    padding: var(--space-4);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.25s;
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    cursor: pointer;
-    transition: all var(--transition-normal);
-    opacity: 0;
-    transform: translateY(20px);
-    animation: fadeUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-    min-width: 0; /* Critical for grid children */
-}
-
-@media (max-width: 480px) {
-    .story-card {
-        padding: var(--space-3);
-        border-radius: var(--radius-lg);
-    }
-}
-
-@keyframes fadeUp {
-    to { opacity: 1; transform: translateY(0); }
+    min-width: 0;
 }
 
 .story-card:hover {
@@ -1675,7 +1659,7 @@ body::after {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 48px;
+    font-size: 32px;
     position: relative;
     overflow: hidden;
 }
@@ -1707,16 +1691,28 @@ body::after {
     text-overflow: ellipsis;
 }
 
-.story-card-meta {
-    font-size: 0.7rem;
-    color: var(--primary);
-    font-weight: 600;
+@media (max-width: 480px) {
+    .story-card-info {
+        padding: var(--space-2);
+    }
+
+    .story-card-title {
+        font-size: 0.85rem;
+    }
+
+    .story-card-meta, .story-card-chapters {
+        font-size: 0.7rem;
+    }
+
+    .story-card-artwork {
+        font-size: 24px;
+    }
 }
 
-@media (max-width: 480px) {
-    .story-card-title {
-        font-size: 0.875rem;
-    }
+.story-card-meta {
+    font-size: 0.75rem;
+    color: var(--primary);
+    font-weight: 600;
 }
 
 .story-card-chapters {
@@ -1860,45 +1856,16 @@ body::after {
 }
 
 .chapter-card {
-    background: var(--surface-glass);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--surface-border);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-xl);
     padding: var(--space-4);
     display: flex;
     align-items: center;
     gap: var(--space-4);
     cursor: pointer;
-    transition: all var(--transition-normal);
+    transition: all 0.25s;
     position: relative;
-    overflow: hidden;
-}
-
-.chapter-card.in-progress {
-    border-color: var(--primary);
-    background: var(--primary-subtle);
-    box-shadow: var(--shadow-glow);
-    animation: cardPulse 4s ease-in-out infinite;
-}
-
-@keyframes cardPulse {
-    0%, 100% { border-color: var(--primary); }
-    50% { border-color: var(--primary-light); box-shadow: var(--shadow-glow-intense); }
-}
-
-.chapter-card.in-progress::after {
-    content: 'NOW PLAYING';
-    position: absolute;
-    top: 10px;
-    right: 12px;
-    font-size: 8px;
-    font-weight: 800;
-    color: var(--primary);
-    background: rgba(6, 182, 212, 0.1);
-    padding: 2px 6px;
-    border-radius: 4px;
-    letter-spacing: 0.5px;
-    backdrop-filter: blur(4px);
 }
 
 .chapter-card:hover {

@@ -31,8 +31,19 @@ except ImportError:
     TTSManager = None
     TTSConfig = None
 
+from fastapi.middleware.cors import CORSMiddleware
+
 # Global instance for Cloud Run
 app = FastAPI(title="Cyberpunk TTS Player")
+
+# Add CORS middleware to allow cross-origin requests (essential for some mobile browsers)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Configuration
 BASE_DIR = Path(__file__).parent
@@ -63,16 +74,42 @@ async def get_player(request: Request):
 async def get_dashboard(request: Request):
     return TEMPLATES.TemplateResponse(request=request, name="dashboard.html")
 
-@app.get("/api/stories")
-async def list_stories():
+from .progress_tracker import ProgressTracker
+
+@app.get("/api/library/status")
+async def get_library_status():
     try:
-        print("🔍 API: Listing stories...")
+        lib_path = Path(os.environ.get("LIBRARY_PATH", "Library"))
+        print(f"🔍 API: Scanning library status in {lib_path}...")
+        stories_data = ProgressTracker.get_all_stories(lib_path)
+        
+        # Format for dashboard.js
+        results = []
+        for s in stories_data:
+            results.append({
+                "name": s["name"],
+                "txt_count": s["txt_count"],
+                "mp3_count": s["mp3_count"],
+                "status": s["status"],
+                "progress": s["tracker"].data
+            })
+            
+        print(f"📊 Dashboard: Returning status for {len(results)} stories.")
+        return results
+    except Exception as e:
+        print(f"❌ Error getting library status: {str(e)}")
+        return {"error": str(e)}
+
+@app.get("/api/stories")
+async def list_stories(request: Request):
+    try:
+        client_host = request.client.host
+        print(f"🔍 API: Listing stories for client {client_host}...")
         stories = STORAGE.list_stories()
         print(f"📖 Found {len(stories)} stories in storage.")
         return {"stories": stories}
     except Exception as e:
         print(f"❌ Error listing stories: {str(e)}")
-        # Return error as part of JSON to stop the 'Unexpected token I' on frontend
         return {"stories": [], "error": str(e)}
 
 @app.get("/api/stories/{story_name}")
@@ -120,8 +157,12 @@ async def scrape_story(req: ScrapeRequest):
 async def get_tasks_status():
     return active_tasks
 
-async def start_server(host="0.0.0.0", port=8000, library_path="Library"):
+async def start_server(host="0.0.0.0", port=8001, library_path="Library"):
+    global STORAGE
     os.environ["LIBRARY_PATH"] = library_path
+    
+    # Re-initialize storage provider with the correct path after setting LIBRARY_PATH
+    STORAGE = get_storage_provider()
     
     # Helper to get local IP for QR code
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

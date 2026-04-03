@@ -61,7 +61,8 @@ class TTSManager:
         for attempt in range(max_retries):
             try:
                 if use_ssml:
-                    communicate = edge_tts.Communicate(text, self.config.voice, rate=self.config.rate, volume=self.config.volume)
+                    # In edge-tts 7.x, SSML strings are handled automatically by Communicate
+                    communicate = edge_tts.Communicate(text)
                 else:
                     communicate = edge_tts.Communicate(text, self.config.voice, rate=self.config.rate, volume=self.config.volume)
                 
@@ -252,14 +253,14 @@ class TTSManager:
         except Exception as e:
             self._log(f"Combine failed: {e}", "error")
 
-    async def fix_corrupted_files(self, folder_path: Path):
+    async def fix_corrupted_files(self, folder_path: Path, auto_fix=False):
         """Scan and fix corrupted audio files in the folder."""
         audio_dir = folder_path / "Audios"
         if not audio_dir.exists():
-             self._log("No Audios folder found.", "error")
+             self._log(f"No Audios folder found in: {folder_path.name}", "error")
              return
 
-        self._log("🔍 Scanning for corrupted files...")
+        self._log(f"🔍 [cyan]Scanning {folder_path.name}...[/cyan]")
         mp3_files = sorted(list(audio_dir.glob("*.mp3")), key=lambda p: natural_sort_key(p.name))
         corrupted = []
         MIN_SIZE = 1024 # 1KB
@@ -285,12 +286,14 @@ class TTSManager:
             self._log("✅ No corrupted files found.", "success")
             return
 
-        self._log(f"Found {len(corrupted)} corrupted files.", "warning")
-        
-        if self.events and not self.events.confirm("Attempt to fix?"): 
-             return
-        elif not self.events:
-             return # Abort if no UI
+        if not auto_fix:
+            self._log(f"Found {len(corrupted)} corrupted files.", "warning")
+            if self.events and not self.events.confirm("Attempt to fix?"): 
+                 return
+            elif not self.events:
+                 return # Abort if no UI
+        else:
+             self._log(f"Auto-fixing {len(corrupted)} corrupted files in {folder_path.name}...", "info")
 
         # Restore output dir temporarily
         original_output = self.config.output_dir

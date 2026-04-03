@@ -10,17 +10,26 @@ from modules.tts import TTSManager, TTSConfig
 from modules.progress_tracker import ProgressTracker
 from modules.update_checker import UpdateChecker
 from modules.tools import ToolsManager
+from modules.utils import extract_url
 
 class UnifiedDashboard:
     def __init__(self):
         self.root_dir = Path("Library")
         self.root_dir.mkdir(exist_ok=True)
         
+        # Initialize Browser Profile Dir for Persistence (Cloudflare avoidance)
+        self.browser_profile = Path(".browser_profile")
+        self.browser_profile.mkdir(exist_ok=True)
+        
         # Initialize Event Handler for TUI
         self.event_handler = ConsoleEventHandler()
         
-        # Initialize Components with Event Handler
-        self.scraper = NovelScraper(output_dir=str(self.root_dir), event_handler=self.event_handler)
+        # Initialize Components with Event Handler and Profile
+        self.scraper = NovelScraper(
+            output_dir=str(self.root_dir), 
+            user_data_dir=str(self.browser_profile.absolute()),
+            event_handler=self.event_handler
+        )
         self.tts_manager = TTSManager(config=TTSConfig(output_dir="Library"), event_handler=self.event_handler) 
         self.tools_manager = ToolsManager(self.tts_manager)
 
@@ -37,7 +46,7 @@ class UnifiedDashboard:
             show_banner()
             
             menu_items = {
-                "1": "📖 Scraping Mode (ScribbleHub / NovelBin)",
+                "1": "📖 Scraping Mode (Webnovel / SH / NovelBin)",
                 "2": "Batch Text-to-Speech (Folder)",
                 "3": "Process Single Story (Scrape + TTS)",
                 "4": "Resume Last Task",
@@ -131,15 +140,17 @@ class UnifiedDashboard:
 
     async def scraping_mode(self):
         console.clear()
-        console.print(create_menu_table({}, title="SCRAPING MODE"))
+        raw_input = Prompt.ask("[bold magenta]Enter Story URL[/bold magenta] (Webnovel/ScribbleHub/NovelBin)")
+        if not raw_input: return
         
-        url = Prompt.ask("[bold magenta]Enter Story URL[/bold magenta] (ScribbleHub/NovelBin)")
-        if not url: return
+        url = extract_url(raw_input)
+        
+        if "webnovel.com" in url:
+            console.print("[bold yellow]⚠️  Webnovel detected![/bold yellow]")
+            console.print("[dim]Note: Scraping Webnovel requires a visible browser (non-headless) to solve potential security checks.[/dim]")
+            self.scraper.headless = False
+            await asyncio.sleep(1)
 
-        # Optional: Ask for headless mode
-        # headless = Confirm.ask("Run Headless?", default=True)
-        # self.scraper.headless = headless
-        
         await self.scraper.start_scraping(url)
         Prompt.ask("\n[dim]Press Enter to continue...[/dim]")
 
@@ -147,50 +158,70 @@ class UnifiedDashboard:
         console.clear()
         console.print(create_menu_table({}, title="BATCH TTS MODE"))
         
-        # List folders in Library/
-        folders = [d for d in self.root_dir.iterdir() if d.is_dir()]
-        folders.sort(key=lambda x: x.name.lower())
+        # List folders in Library/ and check progress
+        all_folders = [d for d in self.root_dir.iterdir() if d.is_dir()]
+        incomplete_folders = []
         
-        if not folders:
-            console.print("[yellow]No folders found in Library/.[/yellow]")
-            folder_str = Prompt.ask("[bold magenta]Enter Folder Name manually[/bold magenta]", default=".")
-            folder_path = self.root_dir / folder_str
-        else:
-            console.print("[cyan]Select Folder to Process:[/cyan]")
-            for i, folder in enumerate(folders, 1):
-                console.print(f"  [bold magenta]{i}.[/bold magenta] {folder.name}")
-            console.print("  [bold magenta]0.[/bold magenta] BACK")
-            
-            choice = Prompt.ask(
-                "[bold cyan]Select[/bold cyan]", 
-                choices=[str(i) for i in range(len(folders) + 1)],
-                default="0"
-            )
-            
-            if choice == "0":
-                return
-                
-            folder_path = folders[int(choice) - 1]
-
-        if not folder_path.exists():
-            # Support absolute paths as fallback
-            if not folder_path.exists():
-                folder_path = Path(folder_path)
-            
-        if not folder_path.exists():
-            console.print(f"[bold red]❌ Folder not found: {folder_path}[/bold red]")
+        with console.status("[bold cyan]🔍 Scanning library for pending tasks...[/bold cyan]"):
+            for folder in all_folders:
+                tracker = ProgressTracker(folder)
+                # Ensure metadata is fresh by syncing with disk state
+                tracker.update_tts()
+                progress = tracker.get_tts_progress()
+                # If there are text files and not all have audio, it's incomplete
+                if progress["total"] > 0 and progress["converted"] < progress["total"]:
+                    incomplete_folders.append(folder)
+        
+        incomplete_folders.sort(key=lambda x: x.name.lower())
+        
+        if not incomplete_folders:
+            console.print("[bold green]✅ ALL STORIES ARE UP TO DATE![/bold green]")
+            console.print("[dim]No stories found that require TTS conversion.[/dim]")
             await asyncio.sleep(2)
             return
 
-        console.print("\n[bold cyan]Select Mode:[/bold cyan]")
+        console.print(f"[cyan]Found {len(incomplete_folders)} stories with pending chapters:[/cyan]")
+        for folder in incomplete_folders:
+            tracker = ProgressTracker(folder)
+            stats = tracker.get_tts_progress()
+            console.print(f"  [dim]•[/dim] [magenta]{folder.name}[/magenta] [dim]({stats['converted']}/{stats['total']} chapters)[/dim]")
+        
+        console.print("\n[cyan]Select Action:[/cyan]")
+        console.print("  [bold magenta]1.[/bold magenta] Process ALL Incomplete Stories")
+        console.print("  [bold magenta]2.[/bold magenta] Select Specific Story to Process")
+        console.print("  [bold magenta]0.[/bold magenta] BACK")
+        
+        sub_choice = Prompt.ask("Action", choices=["0", "1", "2"], default="0")
+        
+        if sub_choice == "0":
+            return
+
+        # Common mode selection for the chosen task
+        console.print("\n[bold cyan]Select Speaker Mode:[/bold cyan]")
         console.print("  [magenta]1.[/magenta] Single Speaker")
         console.print("  [magenta]2.[/magenta] Dual Speaker (Narrator + Dialogue)")
-        
         mode = Prompt.ask("Mode", choices=["1", "2"], default="1")
         use_dual = (mode == "2")
-        
-        await self.tts_manager.process_folder(folder_path, dual_speaker=use_dual)
-        await self.tts_manager.auto_combine_audios(folder_path)
+
+        if sub_choice == "1":
+            console.print(f"\n[bold green]🚀 Processing ALL {len(incomplete_folders)} stories...[/bold green]\n")
+            for folder in incomplete_folders:
+                await self.tts_manager.process_folder(folder, dual_speaker=use_dual)
+                await self.tts_manager.auto_combine_audios(folder)
+        else:
+            console.print("\n[cyan]Select Story to Process:[/cyan]")
+            for i, folder in enumerate(incomplete_folders, 1):
+                tracker = ProgressTracker(folder)
+                stats = tracker.get_tts_progress()
+                console.print(f"  [bold magenta]{i:3}.[/bold magenta] {folder.name} [dim]({stats['converted']}/{stats['total']} chapters)[/dim]")
+            
+            choice = Prompt.ask(
+                "[bold cyan]Select Story[/bold cyan]", 
+                choices=[str(i) for i in range(1, len(incomplete_folders) + 1)]
+            )
+            selected_folder = incomplete_folders[int(choice) - 1]
+            await self.tts_manager.process_folder(selected_folder, dual_speaker=use_dual)
+            await self.tts_manager.auto_combine_audios(selected_folder)
         
         Prompt.ask("\n[dim]Press Enter to continue...[/dim]")
 
@@ -198,8 +229,14 @@ class UnifiedDashboard:
         console.clear()
         console.print(create_menu_table({}, title="FULL AUTO (SCRAPE + TTS)"))
         
-        url = Prompt.ask("[bold magenta]Enter Story URL[/bold magenta]")
-        if not url: return
+        raw_input = Prompt.ask("[bold magenta]Enter Story URL[/bold magenta]")
+        if not raw_input: return
+        
+        url = extract_url(raw_input)
+        
+        if "webnovel.com" in url:
+            self.scraper.headless = False
+            console.print("[bold yellow]⚠️  Webnovel detected! (Non-headless enabled)[/bold yellow]")
 
         # 1. Scrape
         console.print("\n[bold cyan]STEP 1: SCRAPING[/bold cyan]")
@@ -232,7 +269,7 @@ class UnifiedDashboard:
         # Scraper resume logic is inside scraper.resume_scraping which takes a folder
         # We need to find folders with progress.json
         
-        stories = [d for d in self.root_dir.iterdir() if d.is_dir() and (d / "progress.json").exists()]
+        stories = [d for d in self.root_dir.iterdir() if d.is_dir() and (d / ".story_progress.json").exists()]
         
         if not stories:
             console.print("[yellow]No tasks with progress found.[/yellow]")
@@ -248,7 +285,7 @@ class UnifiedDashboard:
         
         # Check metadata to see if scraping is done
         tracker = ProgressTracker(selected_story)
-        if tracker.data["scraping"]["status"] == "completed":
+        if tracker.data["metadata"]["status"] == "completed":
             console.print("[green]Scraping marked as complete. Checking TTS...[/green]")
             # TODO: Resume processing TTS if partial?
             # For now, just trigger TTS process
@@ -263,18 +300,44 @@ class UnifiedDashboard:
         console.clear()
         console.print(create_menu_table({}, title="FIX CORRUPTED FILES"))
         
-        folder_str = Prompt.ask("[bold magenta]Enter Folder Name in Library/[/bold magenta]", default=".")
-        folder_path = self.root_dir / folder_str
-         
-        if not folder_path.exists():
-            folder_path = Path(folder_str)
-
-        if not folder_path.exists():
-            console.print(f"[bold red]❌ Folder not found[/bold red]")
+        folders = [d for d in self.root_dir.iterdir() if d.is_dir()]
+        folders.sort(key=lambda x: x.name.lower())
+        
+        if not folders:
+            console.print("[yellow]No stories found in Library.[/yellow]")
             await asyncio.sleep(2)
             return
 
-        await self.tts_manager.fix_corrupted_files(folder_path)
+        console.print(f"[cyan]Found {len(folders)} folders in Library:[/cyan]")
+        for folder in folders:
+            console.print(f"  [dim]•[/dim] [magenta]{folder.name}[/magenta]")
+        
+        console.print("\n[cyan]Select Action:[/cyan]")
+        console.print("  [bold magenta]1.[/bold magenta] Fix ALL Folders (Full Scan)")
+        console.print("  [bold magenta]2.[/bold magenta] Select Specific Folder to Fix")
+        console.print("  [bold magenta]0.[/bold magenta] BACK")
+        
+        sub_choice = Prompt.ask("Action", choices=["0", "1", "2"], default="0")
+        
+        if sub_choice == "0":
+            return
+            
+        if sub_choice == "1":
+            console.print(f"\n[bold green]🚀 Scanning ALL {len(folders)} folders for corruption...[/bold green]\n")
+            for folder in folders:
+                await self.tts_manager.fix_corrupted_files(folder, auto_fix=True)
+        else:
+            console.print("\n[cyan]Select Folder to Scan/Fix:[/cyan]")
+            for i, folder in enumerate(folders, 1):
+                console.print(f"  [bold magenta]{i:3}.[/bold magenta] {folder.name}")
+            
+            choice = Prompt.ask(
+                "[bold cyan]Select Folder[/bold cyan]", 
+                choices=[str(i) for i in range(1, len(folders) + 1)]
+            )
+            selected_folder = folders[int(choice) - 1]
+            await self.tts_manager.fix_corrupted_files(selected_folder)
+            
         Prompt.ask("\n[dim]Press Enter to continue...[/dim]")
 
     async def cleaner_mode(self):
