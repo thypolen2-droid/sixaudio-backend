@@ -1,35 +1,37 @@
-# ⚡ CYBERPUNK TTS & NOVEL TOOLKIT v3.0 ⚡
+# ⚡ SIXAUDIO: CYBERPUNK TTS & NOVEL TOOLKIT ⚡
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Edge TTS](https://img.shields.io/badge/TTS-Microsoft%20Edge-cyan)](https://github.com/rany2/edge-tts)
 
-An immersive, high-performance toolkit for the modern bibliophile. Scrape your favorite web novels, transform them into premium neural audiobooks, and sync them across all your devices with a single click.
+**SixAudio** is an immersive, high-performance toolkit for the modern bibliophile. Scrape your favorite web novels, transform them into premium neural audiobooks with dual-speaker SSML, and sync them across all your devices via a glassmorphism web player.
+
+![SixAudio Mobile Player](assets/preview.png)
 
 ---
 
 ## 🚀 Key Features
 
 ### 🛠️ Core Engine
-- **Web Scraping (DrissionPage)**: Bypass bot detection on ScribbleHub, NovelBin, and more.
-- **Advanced TTS (edge-tts v7.2.8)**: Leveraging the latest neural voices from Microsoft Edge with automated 403-error mitigation.
-- **Dual-Speaker Mode**: Intelligent SSML generation that distinguishes between Narrator and Dialogue for an immersive experience.
-- **Batch Processing**: Convert entire volumes in minutes with multi-threaded efficiency.
+- **Web Scraping (DrissionPage)**: Bypass Cloudflare and bot detection on ScribbleHub, NovelBin, and more.
+- **Advanced TTS (edge-tts v7.2.8+)**: Leveraging the latest neural voices from Microsoft Edge with automated 403-error mitigation.
+- **Dual-Speaker Mode**: Intelligent SSML generation that distinguishes between **Narrator** and **Dialogue** for an immersive experience.
 - **Audiobook Concatenation**: Seamlessly merge chapters into high-bitrate MP3s using FFmpeg.
 
 ### 📱 Connectivity & Cloud
-- **Mobile Sync / Web Player**: A built-in local server with a **premium Web UI**. Listen to your library on any mobile device on your network.
-- **Cloud Sync**: One-click synchronization to **Firebase / Google Cloud Storage**. Access your stories from anywhere in the world.
-- **Local Network Discovery**: Smart IP detection for instant mobile access without manual configuration.
+- **Mobile Sync / Web Player**: Built-in **FastAPI** server with a premium, responsive Web UI. 
+- **QR Code Pairing**: Instant mobile connection via local network discovery—just scan and listen.
+- **Real-time Monitoring**: WebSocket-powered task tracking. Watch your scraping and TTS progress live on your mobile device.
+- **Cloud Storage**: One-click synchronization to **Firebase / Google Cloud Storage**.
 
 ### 🧹 Intelligence & Cleanup
-- **Smart Cleaner**: Automatic removal of "Author Notes", "Promo Content", and site-specific metadata to keep your audio clean.
-- **Corruption Fixer**: Deep scan algorithm that identifies and repairs empty, truncated, or failed audio files instantly.
-- **Progress Tracking**: Persistent JSON-based state management. Never lose your place in a 1,000-chapter epic.
+- **Smart Cleaner**: Proactively removes site metadata, "Author Notes", and promotional scripts.
+- **Corruption Fixer**: Deep scan algorithm that identifies and repairs empty, truncated, or failed audio files.
+- **Progress Tracking**: Persistent JSON-based state management with per-novel tracking.
 
 ---
 
-## 🛠️ Cyberpunk Tech Stack
+## 🛠️ Tech Stack
 
 | Layer | Technology |
 | :--- | :--- |
@@ -37,9 +39,9 @@ An immersive, high-performance toolkit for the modern bibliophile. Scrape your f
 | **TUI** | [Rich](https://github.com/Textualize/rich) (Cyan/Magenta Cyberpunk Theme) |
 | **Scraper** | [DrissionPage](https://github.com/g1879/DrissionPage) |
 | **TTS Engine** | [edge-tts](https://github.com/rany2/edge-tts) (v7.2.8+) |
-| **Server** | Flask / Python-Dotenv |
-| **Frontend** | Vanilla JS / CSS3 (Glassmorphism UI) |
-| **Cloud** | Firebase Storage / Service Accounts |
+| **Server** | FastAPI / Uvicorn / Jinja2 |
+| **Frontend** | Vanilla JS / CSS3 (Glassmorphism + WebSockets) |
+| **Cloud** | Firebase Storage / GCS |
 | **Audio** | FFmpeg / Pydub |
 
 ---
@@ -47,7 +49,7 @@ An immersive, high-performance toolkit for the modern bibliophile. Scrape your f
 ## 📥 Installation
 
 ### Prerequisites
-- **Python 3.10+**
+- **Python 3.12+**
 - **FFmpeg**: Required for audio merging. 
   - *Windows*: `choco install ffmpeg`
   - *Mac*: `brew install ffmpeg`
@@ -56,64 +58,62 @@ An immersive, high-performance toolkit for the modern bibliophile. Scrape your f
 ### Setup
 1. **Clone the project**:
    ```bash
-   git clone https://github.com/youruser/cyber-tts-toolkit.git
-   cd cyber-tts-toolkit
+   git clone https://github.com/thypolen2-droid/sixaudio-backend.git
+   cd sixaudio-backend
    ```
 
-2. **Install dependencies**:
+2. **Activate Virtual Environment** (Windows PowerShell):
+   ```powershell
+   .\venv\Scripts\Activate.ps1
+   ```
+
+3. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
-
-3. **Configure Environment** (Optional for Cloud Sync):
-   Create a `.env` file or provide credentials in the UI for Firebase integration.
 
 ---
 
 ## 🎮 Usage
 
-Launch the **Cyberpunk Dashboard**:
+Launch the **Unified Dashboard**:
 
 ```bash
 python app.py
 ```
 
-### Dashboard Commands:
-- `1` **Scraping Mode**: Enter a novel URL to begin ingestion.
-- `2` **Batch TTS**: Convert local text folders to audio.
+### Dashboard Modes:
+- `1` **Scraping Mode**: Ingest novels from source URLs.
+- `2` **Batch TTS**: Convert local text folders to audio (supports Dual Speaker).
 - `5` **Fix Corrupted**: Auto-repair failed generations.
-- `7` **Mobile Server**: Start the local web portal for mobile listening.
-- `10` **Cloud Sync**: Push your library to the stars.
+- `7` **Mobile Server**: Remote listening portal for mobile browsers.
+- `10` **Cloud Sync**: Push your library to Firebase stars.
 
 ---
 
 ## 📂 Project Structure
 
 ```text
-├── app.py              # Main Entry Point (TUI Dashboard)
+├── app.py              # Unified Dashboard (TUI Entry)
 ├── modules/
 │   ├── scraper.py     # Chromium-based scraping engine
 │   ├── tts.py         # edge-tts manager & SSML logic
-│   ├── ui.py          # Rich-based UI components
-│   ├── server.py      # Flask Mobile Server
-│   └── storage.py     # Firebase / Local IO management
-├── Library/           # Default Story Output (Scraped Text + MP3s)
-└── static/            # Frontend assets for Web Player
+│   ├── ui.py          # Carbon-style Rich UI
+│   ├── server.py      # FastAPI Server (Mobile Access)
+│   └── storage.py     # Cloud & Local IO providers
+├── Library/           # Local Data (TXT + MP3)
+└── assets/            # Project documentation assets
 ```
 
 ---
 
-## 🛡️ Support & Development
+## 🛡️ Support
 
 **Encountering 403 Errors?**
-The system now uses `edge-tts 7.2.8+`. If you see connection issues, run:
-`pip install --upgrade edge-tts`
+Ensure you are on the latest `edge-tts`: `pip install --upgrade edge-tts`.
 
 **Missing Chapters?**
-Check the `progress.json` in your story folder to see the scraping status.
-
-**Contributing**
-Pull requests are welcome! For major changes, please open an issue first.
+Check the `.story_progress.json` in your story folder to verify state.
 
 ---
 
