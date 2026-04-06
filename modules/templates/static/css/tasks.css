@@ -1,0 +1,126 @@
+/* 
+ * CYBERPUNK TASK TRACKER
+ * Glassmorphic UI with Neon Accents
+ */
+
+.task-status-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 20px;
+    background: rgba(10, 10, 15, 0.4);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(0, 242, 255, 0.2);
+    overflow-y: auto;
+    max-height: 400px;
+}
+
+.task-card {
+    background: rgba(20, 20, 30, 0.6);
+    border-left: 3px solid var(--primary, #00f2ff);
+    padding: 12px;
+    border-radius: 8px;
+    position: relative;
+    overflow: hidden;
+    animation: slideInTask 0.3s ease-out;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.task-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(0, 242, 255, 0.05) 0%, transparent 100%);
+    pointer-events: none;
+}
+
+@keyframes slideInTask {
+    from { transform: translateX(20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.task-title {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--primary, #00f2ff);
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.task-msg {
+    font-size: 13px;
+    color: #fff;
+    margin-bottom: 10px;
+    font-family: 'Inter', sans-serif;
+}
+
+.task-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.task-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00f2ff, #0066ff);
+    box-shadow: 0 0 10px rgba(0, 242, 255, 0.5);
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.task-logs {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 8px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    max-height: 80px;
+    overflow-y: auto;
+    color: #8892b0;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.log-entry {
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+.log-entry.active {
+    color: #fff;
+    border-left: 2px solid #00f2ff;
+    padding-left: 5px;
+}
+
+/* Status variants */
+.task-card.status-completed { border-left-color: #00ff88; }
+.task-card.status-failed { border-left-color: #ff4444; }
+.task-card.status-queued { border-left-color: #ffaa00; }
+
+.task-card.status-completed .task-title { color: #00ff88; }
+.task-card.status-failed .task-title { color: #ff4444; }
+
+/* Custom Scrollbar for Logs */
+.task-logs::-webkit-scrollbar {
+    width: 3px;
+}
+.task-logs::-webkit-scrollbar-thumb {
+    background: rgba(0, 242, 255, 0.3);
+    border-radius: 10px;
+}
+
+/* Animations for active Log */
+.log-entry.active::after {
+    content: '_';
+    animation: blinkCursor 0.8s infinite;
+}
+
+@keyframes blinkCursor {
+    50% { opacity: 0; }
+}

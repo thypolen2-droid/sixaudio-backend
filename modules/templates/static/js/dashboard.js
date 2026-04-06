@@ -1,10 +1,10 @@
 /**
- * CYBERPUNK TTS - DASHBOARD LOGIC
+ * CYBERPUNK TTS - DASHBOARD LOGIC v2.0
+ * Fully integrated with TaskTracker for real-time status.
  */
 
 const CONFIG = {
     // If running on local network (IP), hostname (localhost), or development, use relative paths.
-    // ONLY use the production backend if specifically on one of our cloud domains.
     API_BASE_URL: (
         window.location.hostname.includes('onrender.com') || 
         window.location.hostname.includes('firebaseapp.com')
@@ -25,29 +25,41 @@ const DOM = {
     refreshAllBtn: document.getElementById('refreshAllBtn'),
     dashScrapeModalClose: document.getElementById('dashScrapeModalClose'),
     dashScrapeModalCancel: document.getElementById('dashScrapeModalCancel'),
-    dashMenuClose: document.getElementById('dashMenuClose')
+    dashMenuClose: document.getElementById('dashMenuClose'),
+    sidebarClose: document.getElementById('sidebarClose')
 };
 
 /**
  * INITIALIZATION
  */
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize Task Tracking
+    if (typeof TaskTracker !== 'undefined') {
+        TaskTracker.init('taskStatus');
+        TaskTracker.onUpdate((id, data) => {
+            if (data && data.status === 'completed') {
+                console.log('✅ Task finished:', id);
+                setTimeout(fetchLibrary, 1500); // Reload library when a task finishes
+            }
+        });
+    }
+
     fetchLibrary();
-    pollTasks();
 
-    DOM.startScrapeBtn.addEventListener('click', startScraping);
-
-    // Header buttons
+    // Event Listeners
+    if (DOM.startScrapeBtn) DOM.startScrapeBtn.addEventListener('click', startScraping);
     if (DOM.scrapeNewBtn) DOM.scrapeNewBtn.addEventListener('click', () => openModal('scrapeModal'));
     if (DOM.refreshAllBtn) DOM.refreshAllBtn.addEventListener('click', checkUpdates);
 
     // Modal close/cancel
-    if (DOM.dashScrapeModalClose) DOM.dashScrapeModalClose.addEventListener('click', () => closeModal('scrapeModal'));
-    if (DOM.dashScrapeModalCancel) DOM.dashScrapeModalCancel.addEventListener('click', () => closeModal('scrapeModal'));
+    [DOM.dashScrapeModalClose, DOM.dashScrapeModalCancel].forEach(el => {
+        if (el) el.addEventListener('click', () => closeModal('scrapeModal'));
+    });
 
     // Sidebar close
-    if (DOM.dashMenuClose) DOM.dashMenuClose.addEventListener('click', () => toggleSidebar(false));
-    if (DOM.sidebarOverlay) DOM.sidebarOverlay.addEventListener('click', () => toggleSidebar(false));
+    [DOM.dashMenuClose, DOM.sidebarClose, DOM.sidebarOverlay].forEach(el => {
+        if (el) el.addEventListener('click', () => toggleSidebar(false));
+    });
 });
 
 /**
@@ -58,10 +70,7 @@ async function fetchLibrary() {
         const response = await fetch(`${CONFIG.API_BASE_URL}/api/library/status`);
         const data = await response.json();
 
-        if (data.error) {
-            throw new Error(data.error);
-        }
-
+        if (data.error) throw new Error(data.error);
         renderLibrary(data);
     } catch (error) {
         console.error('Failed to fetch library:', error);
@@ -69,7 +78,7 @@ async function fetchLibrary() {
             <div style="grid-column: 1/-1; text-align: center; padding: 40px; background: rgba(255,0,0,0.1); border: 1px solid red; border-radius: 10px;">
                 <h3 style="color: #ff4444;">DATABASE ERROR</h3>
                 <p style="color: var(--text-secondary); margin-top: 10px;">${error.message}</p>
-                <button class="btn btn-secondary" style="margin-top: 15px;" onclick="fetchLibrary()">RETRY SCAN</button>
+                <button class="action-btn" style="margin-top: 15px;" onclick="fetchLibrary()">RETRY SCAN</button>
             </div>
         `;
     }
@@ -130,7 +139,7 @@ function renderLibrary(stories) {
 
             <div class="card-actions">
                 <button class="action-btn" onclick="openScrapeForStory('${story.progress.metadata.story_url}')">🕷️ SCRAPE</button>
-                <button class="action-btn" onclick="triggerAction('fix-empty', '${story.name}')" title="Fix chapters with no content">🔧 FIX</button>
+                <button class="action-btn" onclick="triggerAction('fix-empty', '${story.name}')" title="Fix empty chapters">🔧 FIX</button>
                 <button class="action-btn" onclick="triggerAction('clean', '${story.name}')">🧹 CLEAN</button>
                 <button class="action-btn primary" onclick="triggerAction('convert', '${story.name}')">🎧 CONVERT</button>
                 <button class="action-btn" style="grid-column: span 4;" onclick="window.location.href='/?story=${encodeURIComponent(story.name)}'">▶️ PLAY IN PLAYER</button>
@@ -144,13 +153,10 @@ function renderLibrary(stories) {
  * ACTIONS
  */
 function openScrapeForStory(url) {
-    if (url) {
-        DOM.scrapeUrl.value = url;
-    } else {
-        DOM.scrapeUrl.value = '';
-    }
+    if (url) DOM.scrapeUrl.value = url;
     openModal('scrapeModal');
 }
+
 async function triggerAction(action, storyName) {
     try {
         const response = await fetch(`${CONFIG.API_BASE_URL}/api/actions/${action}`, {
@@ -159,16 +165,17 @@ async function triggerAction(action, storyName) {
             body: JSON.stringify({ story_name: storyName })
         });
         const result = await response.json();
-        toggleSidebar(true);
-        pollTasks();
+        console.log(`Action ${action} triggered:`, result);
+        toggleSidebar(true); // Open sidebar to show progress
     } catch (error) {
-        alert('Action failed: ' + error.message);
+        console.error(`Action ${action} failed:`, error);
+        alert('Action failed. See console.');
     }
 }
 
 async function startScraping() {
     const url = DOM.scrapeUrl.value;
-    if (!url) return alert('Enter URL');
+    if (!url) return alert('Please enter a story URL');
 
     try {
         const response = await fetch(`${CONFIG.API_BASE_URL}/api/actions/scrape`, {
@@ -180,93 +187,23 @@ async function startScraping() {
                 headless: DOM.scrapeHeadless.checked
             })
         });
+        const result = await response.json();
+        console.log("Scrape triggered:", result);
         closeModal('scrapeModal');
         toggleSidebar(true);
-        pollTasks();
     } catch (error) {
-        alert('Scraping failed');
+        console.error('Scraping request failed:', error);
+        alert('Request failed.');
     }
 }
 
 async function checkUpdates() {
     try {
-        await fetch(`${CONFIG.API_BASE_URL}/api/actions/check-updates`);
+        await fetch(`${CONFIG.API_BASE_URL}/api/actions/check-updates`, { method: 'POST' });
         toggleSidebar(true);
-        pollTasks();
     } catch (error) {
-        alert('Update check failed');
+        console.error('Update check failed:', error);
     }
-}
-
-/**
- * TASK POLLING (Shared logic)
- */
-async function pollTasks() {
-    try {
-        const response = await fetch(`${CONFIG.API_BASE_URL}/api/tasks/status`);
-        const tasks = await response.json();
-
-        // Update global task state for card rendering
-        currentTasks = tasks;
-
-        const taskIds = Object.keys(tasks);
-        if (taskIds.length === 0) {
-            DOM.taskStatus.innerHTML = '<div style="font-size: 11px; opacity: 0.5; text-align: center; padding: 20px;">No active tasks</div>';
-            // If tasks were just cleared, refresh the grid one last time
-            if (Object.keys(currentTasks).length > 0) {
-                currentTasks = {};
-                fetchLibrary();
-            }
-            return;
-        }
-
-        DOM.taskStatus.innerHTML = '';
-        let hasJustFinished = false;
-
-        taskIds.forEach(id => {
-            const task = tasks[id];
-            const card = document.createElement('div');
-            card.className = 'task-card';
-            card.innerHTML = `
-                <div class="task-title">
-                    <span>${id.split('_')[0].toUpperCase()}</span>
-                    <span>${task.status}</span>
-                </div>
-                <div class="task-msg">${task.message}</div>
-                <div class="task-progress-bar">
-                    <div class="task-progress-fill" style="width: ${task.progress}%"></div>
-                </div>
-            `;
-            DOM.taskStatus.appendChild(card);
-
-            // If any task finished, mark for refresh
-            if (task.status === 'completed' || task.status === 'failed') {
-                hasJustFinished = true;
-            }
-        });
-
-        // Dynamic update of library cards while tasks are running
-        renderLibraryGridOnly();
-
-        if (hasJustFinished) {
-            setTimeout(fetchLibrary, 1000);
-        }
-
-        const hasActive = taskIds.some(id => tasks[id].status !== 'completed' && tasks[id].status !== 'failed');
-        if (hasActive) setTimeout(pollTasks, 2000);
-    } catch (error) { }
-}
-
-/**
- * RE-RENDER ONLY THE GRID WITHOUT FETCHING (for live updates)
- */
-async function renderLibraryGridOnly() {
-    // We actually need the story data to render correctly, 
-    // but the task progress updates independently.
-    // For now, pollTasks calls fetchLibrary on finish, 
-    // and renderLibrary uses currentTasks for live progress.
-    // To make it truly live, we'd need to cache stories.
-    // Let's just call fetchLibrary every few polls if tasks are active.
 }
 
 /**
@@ -274,15 +211,20 @@ async function renderLibraryGridOnly() {
  */
 function toggleSidebar(show) {
     if (show) {
-        DOM.sidebar.style.transform = 'translateX(0)';
-        DOM.sidebarOverlay.style.display = 'block';
-        setTimeout(() => DOM.sidebarOverlay.style.opacity = '1', 10);
+        DOM.sidebar.classList.add('active');
+        DOM.sidebarOverlay.classList.add('active');
     } else {
-        DOM.sidebar.style.transform = 'translateX(100%)';
-        DOM.sidebarOverlay.style.opacity = '0';
-        setTimeout(() => DOM.sidebarOverlay.style.display = 'none', 300);
+        DOM.sidebar.classList.remove('active');
+        DOM.sidebarOverlay.classList.remove('active');
     }
 }
 
-function openModal(id) { document.getElementById(id).classList.add('active'); }
-function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function openModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) modal.classList.add('active');
+}
+
+function closeModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) modal.classList.remove('active');
+}

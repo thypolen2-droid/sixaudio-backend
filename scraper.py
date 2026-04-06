@@ -81,6 +81,216 @@ def get_story_title(page, site_config):
         console.print(f"[red]Error in title detection: {e}[/red]")
         return "Unknown_Story"
 
+def extract_webnovel_paragraphs(elements):
+    valid_paras = []
+    seen = set()
+
+    for p in elements:
+        try:
+            txt = p.text.strip()
+        except Exception:
+            continue
+
+        if not txt:
+            continue
+
+        cls = p.attr('class') or ''
+        if 'creators-thought' in cls or 'ad-container' in cls:
+            continue
+
+        if txt not in seen:
+            seen.add(txt)
+            valid_paras.append(txt)
+
+    return valid_paras
+
+def parse_chapter_number(title, fallback=None):
+    if title:
+        match = re.search(r'chapter\s+(\d+)', title, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return fallback
+
+def collect_webnovel_chapter_blocks(page):
+    selectors = [
+        'css:div.chapter_content[class*=j_chapter_]',
+        'css:div.chapter_content',
+        'css:div[class*=j_chapter_]'
+    ]
+
+    for selector in selectors:
+        try:
+            blocks = page.eles(selector, timeout=1)
+        except Exception:
+            blocks = []
+        if blocks:
+            return blocks
+    return []
+
+def extract_webnovel_page_chapters(page, start_chapter_index, fallback_title=None):
+    chapter_blocks = collect_webnovel_chapter_blocks(page)
+    chapters = []
+    next_fallback_num = start_chapter_index
+    seen_keys = set()
+
+    for block in chapter_blocks:
+        try:
+            title_ele = block.ele('css:h1.dib.mb0.fw700.fs24.lh1\\.5', timeout=1) or block.ele('tag:h1', timeout=1)
+        except Exception:
+            title_ele = None
+
+        try:
+            title = (title_ele.text or "").strip() if title_ele else ""
+        except Exception:
+            title = ""
+
+        if not title and len(chapter_blocks) == 1 and fallback_title:
+            title = fallback_title
+
+        chapter_num = parse_chapter_number(title, fallback=next_fallback_num)
+        if chapter_num is None:
+            chapter_num = next_fallback_num
+        next_fallback_num = max(next_fallback_num, chapter_num + 1)
+
+        try:
+            paragraphs = block.eles('css:div.cha-paragraph', timeout=1)
+            if not paragraphs:
+                paragraphs = block.eles('tag:p')
+        except Exception:
+            paragraphs = []
+
+        chapter_text = "\n\n".join(extract_webnovel_paragraphs(paragraphs)).strip()
+        if len(chapter_text) <= 10:
+            continue
+
+        clean_title = title or f"Chapter {chapter_num}"
+        dedupe_key = (chapter_num, clean_title)
+        if dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
+
+        chapters.append({
+            "chapter_num": chapter_num,
+            "title": clean_title,
+            "text": chapter_text
+        })
+
+    return chapters
+
+def get_webnovel_scroll_state(page):
+    try:
+        state = page.run_js("""
+            return {
+                scrollTop: window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0,
+                innerHeight: window.innerHeight || document.documentElement.clientHeight || 0,
+                scrollHeight: Math.max(
+                    document.body ? document.body.scrollHeight : 0,
+                    document.documentElement ? document.documentElement.scrollHeight : 0
+                )
+            };
+        """)
+        if isinstance(state, dict):
+            return {
+                "scroll_top": int(state.get("scrollTop", 0) or 0),
+                "inner_height": int(state.get("innerHeight", 0) or 0),
+                "scroll_height": int(state.get("scrollHeight", 0) or 0),
+            }
+    except Exception:
+        pass
+    return {"scroll_top": 0, "inner_height": 0, "scroll_height": 0}
+
+def collect_webnovel_paragraphs(page, site_config=None):
+    paragraphs = []
+
+    selectors = []
+    if site_config:
+        selectors.extend(site_config.get('content_selectors', []))
+
+    for selector in selectors:
+        try:
+            container = page.ele(selector, timeout=1)
+        except Exception:
+            container = None
+
+        if not container:
+            continue
+
+        try:
+            paragraphs = container.eles('tag:p')
+            if not paragraphs:
+                paragraphs = container.eles('css:div.cha-paragraph')
+            if not paragraphs:
+                paragraphs = [d for d in container.eles('tag:div', timeout=1) if len((d.text or '').strip()) > 30]
+        except Exception:
+            paragraphs = []
+
+        if paragraphs:
+            break
+
+    if not paragraphs:
+        try:
+            paragraphs = page.eles('css:div.cha-paragraph', timeout=1)
+        except Exception:
+            paragraphs = []
+
+    return paragraphs
+
+def progressive_scroll_webnovel(page, site_config=None):
+    console.print("[cyan]Progressively scrolling Webnovel to load the full chapter...[/cyan]")
+
+    stable_rounds = 0
+    bottom_rounds = 0
+    stuck_rounds = 0
+    last_count = -1
+    last_scroll_height = -1
+    last_scroll_top = -1
+
+    for _ in range(120):
+        paragraphs = collect_webnovel_paragraphs(page, site_config)
+
+        count = len(extract_webnovel_paragraphs(paragraphs))
+        scroll_state = get_webnovel_scroll_state(page)
+        scroll_height = scroll_state["scroll_height"]
+        viewport_bottom = scroll_state["scroll_top"] + scroll_state["inner_height"]
+        near_bottom = scroll_height > 0 and viewport_bottom >= (scroll_height - 80)
+
+        if count == last_count:
+            stable_rounds += 1
+        else:
+            stable_rounds = 0
+            last_count = count
+
+        if scroll_height == last_scroll_height and near_bottom:
+            bottom_rounds += 1
+        else:
+            bottom_rounds = 0
+            last_scroll_height = scroll_height
+
+        if near_bottom and scroll_state["scroll_top"] == last_scroll_top and count == last_count:
+            stuck_rounds += 1
+        else:
+            stuck_rounds = 0
+        last_scroll_top = scroll_state["scroll_top"]
+
+        if near_bottom and count > 0 and stable_rounds >= 3 and (bottom_rounds >= 2 or stuck_rounds >= 4):
+            break
+
+        try:
+            page.run_js("""
+                const current = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+                const step = Math.max(window.innerHeight * 0.9, 650);
+                window.scrollTo(0, current + step);
+            """)
+        except Exception:
+            page.scroll.to_bottom()
+        time.sleep(0.8)
+
+    try:
+        page.scroll.to_bottom()
+    except Exception:
+        pass
+    time.sleep(0.8)
+
 def scrape_chain(start_url):
     """Scrapes chapters starting from start_url using DrissionPage."""
     
@@ -151,62 +361,86 @@ def scrape_chain(start_url):
                     os.makedirs(story_dir)
                     console.print(f"[blue]Created directory:[/blue] {story_dir}")
 
-            # 2. Get Chapter Title
-            chp_title_ele = None
-            for selector in site_config['title_selectors']:
-                try:
-                    chp_title_ele = page.ele(selector, timeout=5)
-                    if chp_title_ele:
-                        break
-                except Exception as e:
-                    # Handle page disconnection or element not found
-                    if "PageDisconnectedError" in str(type(e).__name__):
-                        console.print(f"[bold red]Page disconnected while getting title. Stopping scraper.[/bold red]")
-                        return
-                    continue
-            
-            chapter_title_text = f"Chapter {chapter_index}"
-            if chp_title_ele:
-                chapter_title_text = chp_title_ele.text.strip()
-            
-            # 3. Check for Resume (Skip if file exists)
-            safe_chapter_title = sanitize_filename(chapter_title_text)
-            filename = f"{str(chapter_index).zfill(4)}_{safe_chapter_title}.txt"
-            file_path = os.path.join(story_dir, filename)
-            
-            if os.path.exists(file_path):
-                console.print(f"[dim]Skipping (Already exists): {filename}[/dim]")
+            page_last_chapter = chapter_index
+            if 'webnovel.com' in current_url:
+                progressive_scroll_webnovel(page, site_config)
+                chapters = extract_webnovel_page_chapters(page, chapter_index)
+                console.print(f"[cyan]Extracted {len(chapters)} Webnovel chapter blocks from the page.[/cyan]")
+                if chapters:
+                    chapter_numbers = [chapter["chapter_num"] for chapter in chapters]
+                    console.print(f"[cyan]Webnovel page contains chapters {min(chapter_numbers)}-{max(chapter_numbers)}.[/cyan]")
+                if not chapters:
+                    console.print(f"[bold red]Warning: No content found for {current_url}[/bold red]")
+                for chapter in chapters:
+                    chapter_num = chapter["chapter_num"]
+                    chapter_title_text = chapter["title"]
+                    chapter_text = re.sub(r'Report .*? chapter', '', chapter["text"])
+                    chapter_text = re.sub(r'Wait for the next .*?', '', chapter_text)
+                    safe_chapter_title = sanitize_filename(chapter_title_text)
+                    filename = f"{str(chapter_num).zfill(4)}_{safe_chapter_title}.txt"
+                    file_path = os.path.join(story_dir, filename)
+                    page_last_chapter = max(page_last_chapter, chapter_num)
+
+                    if os.path.exists(file_path):
+                        console.print(f"[dim]Skipping (Already exists): {filename}[/dim]")
+                        continue
+
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        if chapter_title_text.lower() not in chapter_text[:200].lower():
+                            f.write(chapter_title_text + "\n\n")
+                        f.write(chapter_text)
+                    console.print(f"[bold green]Saved:[/bold green] {filename}")
             else:
-                # 4. Get Chapter Content
-                content_ele = None
-                for selector in site_config['content_selectors']:
+                # 2. Get Chapter Title
+                chp_title_ele = None
+                for selector in site_config['title_selectors']:
                     try:
-                        content_ele = page.ele(selector, timeout=5)
-                        if content_ele:
+                        chp_title_ele = page.ele(selector, timeout=5)
+                        if chp_title_ele:
                             break
                     except Exception as e:
+                        # Handle page disconnection or element not found
                         if "PageDisconnectedError" in str(type(e).__name__):
-                            console.print(f"[bold red]Page disconnected while getting content. Stopping scraper.[/bold red]")
+                            console.print(f"[bold red]Page disconnected while getting title. Stopping scraper.[/bold red]")
                             return
                         continue
                 
-                if content_ele:
-                    # Robust extraction for Webnovel to avoid "comment" elements
-                    if 'webnovel.com' in current_url:
-                        paragraphs = content_ele.eles('tag:p')
-                        if paragraphs:
-                            chapter_text = "\n\n".join([p.text.strip() for p in paragraphs if 'creators-thought' not in (p.attr('class') or '')])
-                        else:
-                            chapter_text = content_ele.text.strip()
-                    else:
-                        chapter_text = content_ele.text.strip()
-                    
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(chapter_title_text + "\n\n")
-                        f.write(chapter_text)
-                    console.print(f"[bold green]Saved:[/bold green] {filename}")
+                chapter_title_text = f"Chapter {chapter_index}"
+                if chp_title_ele:
+                    chapter_title_text = chp_title_ele.text.strip()
+                
+                # 3. Check for Resume (Skip if file exists)
+                safe_chapter_title = sanitize_filename(chapter_title_text)
+                filename = f"{str(chapter_index).zfill(4)}_{safe_chapter_title}.txt"
+                file_path = os.path.join(story_dir, filename)
+                
+                if os.path.exists(file_path):
+                    console.print(f"[dim]Skipping (Already exists): {filename}[/dim]")
                 else:
-                    console.print(f"[bold red]Warning: No content found for {current_url}[/bold red]")
+                    # 4. Get Chapter Content
+                    content_ele = None
+                    chapter_text = ""
+                    for selector in site_config['content_selectors']:
+                        try:
+                            content_ele = page.ele(selector, timeout=5)
+                            if content_ele:
+                                break
+                        except Exception as e:
+                            if "PageDisconnectedError" in str(type(e).__name__):
+                                console.print(f"[bold red]Page disconnected while getting content. Stopping scraper.[/bold red]")
+                                return
+                            continue
+                    
+                    if content_ele:
+                        chapter_text = content_ele.text.strip()
+
+                    if chapter_text:
+                        with open(file_path, "w", encoding="utf-8") as f:
+                            f.write(chapter_title_text + "\n\n")
+                            f.write(chapter_text)
+                        console.print(f"[bold green]Saved:[/bold green] {filename}")
+                    else:
+                        console.print(f"[bold red]Warning: No content found for {current_url}[/bold red]")
 
             # 5. Find Next Link
             try:
@@ -235,7 +469,7 @@ def scrape_chain(start_url):
                     break
                 
                 current_url = next_url
-                chapter_index += 1
+                chapter_index = page_last_chapter + 1
                 
                 # 6. Smart Delay with Progress Bar
                 delay = random.uniform(5, 10)

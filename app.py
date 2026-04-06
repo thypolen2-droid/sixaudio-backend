@@ -2,9 +2,11 @@ import asyncio
 import sys
 from pathlib import Path
 from rich.prompt import Prompt
+import os
 
 # Import modules
 from modules.ui import show_banner, create_menu_table, console, CyberpunkTheme, ConsoleEventHandler
+from modules.events import RemoteEventHandler, MultiEventHandler
 from modules.scraper import NovelScraper
 from modules.tts import TTSManager, TTSConfig
 from modules.progress_tracker import ProgressTracker
@@ -21,8 +23,10 @@ class UnifiedDashboard:
         self.browser_profile = Path(".browser_profile")
         self.browser_profile.mkdir(exist_ok=True)
         
-        # Initialize Event Handler for TUI
-        self.event_handler = ConsoleEventHandler()
+        # Initialize Event Handler (Multi-handler: TUI + Web Remote)
+        tui_handler = ConsoleEventHandler()
+        remote_handler = RemoteEventHandler() # Defaults to http://localhost:8001
+        self.event_handler = MultiEventHandler([tui_handler, remote_handler])
         
         # Initialize Components with Event Handler and Profile
         self.scraper = NovelScraper(
@@ -286,6 +290,11 @@ class UnifiedDashboard:
         # Check metadata to see if scraping is done
         tracker = ProgressTracker(selected_story)
         if tracker.data["metadata"]["status"] == "completed":
+            recoverable = tracker.get_recoverable_scrape_targets()
+            if recoverable:
+                console.print(f"[yellow]Found {len(recoverable)} incomplete chapter files. Repairing them first...[/yellow]")
+                await self.scraper.recover_incomplete_chapters(selected_story)
+                tracker = ProgressTracker(selected_story)
             console.print("[green]Scraping marked as complete. Checking TTS...[/green]")
             # TODO: Resume processing TTS if partial?
             # For now, just trigger TTS process

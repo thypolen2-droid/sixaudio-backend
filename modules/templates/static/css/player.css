@@ -2064,3 +2064,88 @@ body::after {
         scroll-behavior: auto !important;
     }
 }
+
+/* ============================================
+   TASK REAL-TIME SYSTEM (Common)
+   ============================================ */
+.sidebar .task-status-container {
+    margin-top: 20px;
+    padding: 0 16px 20px;
+    border-top: 1px solid var(--surface-border);
+}
+
+.task-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    margin-top: 15px;
+    position: relative;
+    overflow: hidden;
+    transition: all var(--transition-normal);
+}
+
+.task-card:hover {
+    border-color: var(--primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.task-title {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.task-msg {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.task-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.task-progress-fill {
+    height: 100%;
+    background: var(--primary);
+    box-shadow: 0 0 10px var(--primary);
+    transition: width 0.3s ease;
+}
+
+.task-logs {
+    margin-top: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    padding: 8px;
+    font-family: 'Inter', monospace;
+    font-size: 9px;
+    max-height: 80px;
+    overflow-y: auto;
+    border-left: 2px solid var(--primary);
+    scrollbar-width: thin;
+}
+
+.log-entry {
+    margin-bottom: 4px;
+    color: #888;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.log-entry.active {
+    color: var(--primary-light);
+    font-weight: 700;
+}

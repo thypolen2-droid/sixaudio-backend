@@ -824,51 +824,11 @@ function toggleSidebar(show) {
 /**
  * Poll for active tasks status
  */
-async function pollTasks() {
-    try {
-        const response = await fetch(CONFIG.API_BASE_URL + '/api/tasks/status');
-        const tasks = await response.json();
-
-        const taskIds = Object.keys(tasks);
-        if (taskIds.length === 0) {
-            DOM.taskStatus.innerHTML = '<div style="font-size: 11px; opacity: 0.5; text-align: center;">No active tasks</div>';
-            return;
-        }
-
-        DOM.taskStatus.innerHTML = '';
-        taskIds.forEach(id => {
-            const task = tasks[id];
-            const card = document.createElement('div');
-            card.className = 'task-card';
-            card.innerHTML = `
-                <div class="task-title">
-                    <span>${id.split('_')[0].toUpperCase()}</span>
-                    <span>${task.status}</span>
-                </div>
-                <div class="task-msg">${task.message}</div>
-                <div class="task-progress-bar">
-                    <div class="task-progress-fill" style="width: ${task.progress}%"></div>
-                </div>
-            `;
-            DOM.taskStatus.appendChild(card);
-        });
-
-        // Continue polling if any task is not completed or failed
-        const hasActiveNames = taskIds.some(id => tasks[id].status !== 'completed' && tasks[id].status !== 'failed');
-        if (hasActiveNames) {
-            setTimeout(pollTasks, 2000);
-        }
-    } catch (error) {
-        console.error('Polling failed:', error);
-    }
-}
-
 /**
- * Start a background task
- * @param {string} endpoint 
- * @param {Object} data 
+ * Trigger an action on the server
+ * Real-time feedback is handled by TaskTracker (WebSockets)
  */
-async function startAction(endpoint, data = {}) {
+async function triggerAction(endpoint, data = {}) {
     try {
         const response = await fetch(CONFIG.API_BASE_URL + endpoint, {
             method: 'POST',
@@ -876,12 +836,17 @@ async function startAction(endpoint, data = {}) {
             body: JSON.stringify(data)
         });
         const result = await response.json();
-        pollTasks();
+        console.log(`Action ${endpoint} triggered:`, result);
+        
+        // Open sidebar to show progress if not already open
+        toggleSidebar(true);
         return result;
     } catch (error) {
-        logError('startAction', error);
+        logError('triggerAction', error);
+        showToast('Action failed to start', 'error');
     }
 }
+
 
 // ============================================
 // EVENT LISTENERS
@@ -1054,7 +1019,7 @@ function initializeEventListeners() {
             return;
         }
         closeModal('scrapeModal');
-        await startAction('/api/actions/scrape', {
+        await triggerAction('/api/actions/scrape', {
             url: url,
             fast_mode: DOM.scrapeFast.checked,
             headless: DOM.scrapeHeadless.checked
@@ -1067,7 +1032,7 @@ function initializeEventListeners() {
             return;
         }
         toggleSidebar(false);
-        await startAction('/api/actions/convert', { story_name: PlayerState.currentStory });
+        await triggerAction('/api/actions/convert', { story_name: PlayerState.currentStory });
     });
 
     DOM.menuCleanBtn.addEventListener('click', async () => {
@@ -1076,12 +1041,12 @@ function initializeEventListeners() {
             return;
         }
         toggleSidebar(false);
-        await startAction('/api/actions/clean', { story_name: PlayerState.currentStory });
+        await triggerAction('/api/actions/clean', { story_name: PlayerState.currentStory });
     });
 
     DOM.menuCheckUpdatesBtn.addEventListener('click', async () => {
         toggleSidebar(false);
-        await startAction('/api/actions/check-updates');
+        await triggerAction('/api/actions/check-updates');
     });
 }
 
@@ -1212,6 +1177,29 @@ async function showContinueBanner() {
 }
 
 // ============================================
+// TASK WEB SOCKET SYSTEM (Using Shared TaskTracker)
+// ============================================
+
+/**
+ * Initialize Task Tracking using TaskTracker module
+ */
+function initializeTaskTracking() {
+    if (typeof TaskTracker !== 'undefined') {
+        TaskTracker.init('taskStatus');
+        
+        // Custom callback to reload library when a task finishes
+        TaskTracker.onUpdate((task) => {
+            if (task && task.status === 'completed') {
+                showToast('Processing complete! Refreshing library...', 'success');
+                loadLibrary();
+            }
+        });
+    } else {
+        console.warn('TaskTracker module not loaded.');
+    }
+}
+
+// ============================================
 // INITIALIZATION
 // ============================================
 
@@ -1228,6 +1216,7 @@ async function initializePlayer() {
     // Setup event listeners
     initializeEventListeners();
     initializeSearch();
+    initializeTaskTracking();
 
     // Handle initial story from URL
     const urlParams = new URLSearchParams(window.location.search);

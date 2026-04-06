@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cyberpunk TTS - Dashboard</title>
     <link rel="stylesheet" href="/static/css/player.css">
+    <!-- Core UI & Tasks -->
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/tasks.css">
+    <script src="/static/js/task_tracking.js"></script>
     <style>
         .dashboard-container {
             max-width: 1200px;
@@ -161,6 +165,72 @@
         .progress-fill-mini {
             height: 100%;
             background: var(--primary);
+        }
+
+        /* Task Real-time Styles */
+        .task-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: 15px;
+            margin-bottom: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .task-title {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        .task-msg {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        .task-progress-bar {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .task-progress-fill {
+            height: 100%;
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+            transition: width 0.3s ease;
+        }
+
+        .task-logs {
+            margin-top: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            padding: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 9px;
+            max-height: 80px;
+            overflow-y: auto;
+            border-left: 2px solid var(--primary);
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            color: #aaa;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .log-entry.active {
+            color: var(--primary);
+            font-weight: bold;
         }
     </style>
 </head>
