@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import asyncio
+import json
 import re
 import struct
 import subprocess
@@ -66,7 +67,27 @@ class TTSManager:
                 else:
                     communicate = edge_tts.Communicate(text, self.config.voice, rate=self.config.rate, volume=self.config.volume)
                 
-                await communicate.save(str(output_path))
+                submaker = edge_tts.SubMaker()
+                with open(output_path, "wb") as audio_file:
+                    async for chunk in communicate.stream():
+                        if chunk["type"] == "audio":
+                            audio_file.write(chunk["data"])
+                        elif chunk["type"] in ("WordBoundary", "SentenceBoundary"):
+                            submaker.feed(chunk)
+
+                if submaker.cues:
+                    cues_json_path = output_path.with_suffix(".json")
+                    cues_data = [
+                        {
+                            "text": cue.content.strip(),
+                            "start": round(cue.start.total_seconds(), 3),
+                            "end": round(cue.end.total_seconds(), 3)
+                        }
+                        for cue in submaker.cues
+                        if cue.content and cue.content.strip()
+                    ]
+                    cues_json_path.write_text(json.dumps(cues_data, indent=2, ensure_ascii=False), encoding="utf-8")
+
                 return True
                 
             except Exception as e:

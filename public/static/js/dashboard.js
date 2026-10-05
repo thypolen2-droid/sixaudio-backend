@@ -167,7 +167,12 @@ async function triggerAction(action, storyName) {
 
 async function startScraping() {
     const url = DOM.scrapeUrl.value;
-    if (!url) return alert('Enter URL');
+    if (!url) return alert('Please enter a story URL');
+
+    if (DOM.startScrapeBtn) {
+        DOM.startScrapeBtn.disabled = true;
+        DOM.startScrapeBtn.textContent = 'Queuing...';
+    }
 
     try {
         const response = await fetch(`${CONFIG.API_BASE_URL}/api/actions/scrape`, {
@@ -179,11 +184,24 @@ async function startScraping() {
                 headless: DOM.scrapeHeadless.checked
             })
         });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.detail || `Server returned ${response.status}`);
+        }
+
+        console.log('Scrape queued:', result);
         closeModal('scrapeModal');
         toggleSidebar(true);
-        pollTasks();
+        if (typeof fetchQueue === 'function') fetchQueue();
     } catch (error) {
-        alert('Scraping failed');
+        console.error('Scraping request failed:', error);
+        alert('Could not queue scrape: ' + error.message);
+    } finally {
+        if (DOM.startScrapeBtn) {
+            DOM.startScrapeBtn.disabled = false;
+            DOM.startScrapeBtn.textContent = 'Start Scraping';
+        }
     }
 }
 

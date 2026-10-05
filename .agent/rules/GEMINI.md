@@ -25,6 +25,16 @@ Agent activated → Check frontmatter "skills:" → Read SKILL.md (INDEX) → Re
     - ✅ Activate: Read Rules → Check Frontmatter → Load SKILL.md → Apply All.
 2. **Forbidden:** Never skip reading agent rules or skill instructions. "Read → Understand → Apply" is mandatory.
 
+### 3. Task & State Continuity Protocol (`TASKS.md`)
+
+> 🔴 **MANDATORY FOR ALL AGENTS:**
+> - **DO NOT re-scan the entire codebase** on every session or prompt. Check `TASKS.md` FIRST for current context, active focus, and target files.
+> - **Update `TASKS.md` whenever work starts, changes, or completes:**
+>   - **When Starting a Task / Update:** Log the start date (`YYYY-MM-DD`), mark `[-] In Progress`, and list the target files to make code switching easy.
+>   - **When Switching Code Focus:** Update the "Active Focus & Quick Code Switch" table so any subsequent agent knows exactly which files are actively touched.
+>   - **When Completing a Task:** Mark with `[x]`, log completion date (`YYYY-MM-DD`), and record a brief 1-line summary of what changed.
+
+
 ---
 
 ## 📥 REQUEST CLASSIFIER (STEP 1)
@@ -119,6 +129,12 @@ When user's prompt is NOT in English:
 1. Check `CODEBASE.md` → File Dependencies
 2. Identify dependent files
 3. Update ALL affected files together
+
+### 📋 Universal Task & State Continuity (`TASKS.md`)
+
+- **First Step on Wake-up:** Read `TASKS.md` (Quick Switch table + In-Progress Tasks). Avoid redundant exploration of files already mapped out.
+- **Date & Checkmark Requirement:** Every task must record `Started: YYYY-MM-DD`, status (`[-]` In Progress, `[x]` Done, `[ ]` Todo), and completion date when finished.
+- **Maintain Handoff Integrity:** Keep target file links accurate so other agents can seamlessly continue without context loss.
 
 ### 🗺️ System Map Read
 

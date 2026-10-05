@@ -228,6 +228,101 @@
             text-overflow: ellipsis;
         }
 
+
+        /* Scrape Queue Styles */
+        .queue-panel {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: 18px;
+            margin-bottom: 22px;
+        }
+
+        .queue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .queue-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .queue-badges { display: flex; gap: 8px; }
+
+        .queue-badge {
+            font-size: 10px;
+            font-weight: 800;
+            padding: 4px 9px;
+            border-radius: 10px;
+            border: 1px solid var(--glass-border);
+            text-transform: uppercase;
+        }
+
+        .queue-badge.pending { color: #ffb800; border-color: rgba(255,184,0,.4); }
+        .queue-badge.running { color: var(--primary); border-color: var(--primary); }
+        .queue-badge.completed { color: #00ff88; border-color: rgba(0,255,136,.4); }
+        .queue-badge.failed { color: #ff4444; border-color: rgba(255,68,68,.4); }
+
+        .queue-list { display: flex; flex-direction: column; gap: 8px; }
+
+        .queue-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            background: rgba(0, 0, 0, 0.25);
+            border-left: 3px solid var(--glass-border);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .queue-row.pending { border-left-color: #ffb800; }
+        .queue-row.running { border-left-color: var(--primary); }
+        .queue-row.completed { border-left-color: #00ff88; }
+        .queue-row.failed { border-left-color: #ff4444; }
+
+        .queue-url {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text-secondary);
+        }
+
+        .queue-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+        .queue-btn {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text-secondary);
+            border-radius: 4px;
+            padding: 4px 9px;
+            font-size: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        .queue-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+        .queue-empty {
+            text-align: center;
+            padding: 18px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
         .log-entry.active {
             color: var(--primary);
             font-weight: bold;
@@ -247,6 +342,19 @@
                 <button class="btn btn-secondary" id="refreshAllBtn">🔄 REFRESH ALL</button>
             </div>
         </header>
+
+        <section class="queue-panel" id="queuePanel">
+            <div class="queue-header">
+                <span class="queue-title">🔄 Scrape Queue</span>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <div class="queue-badges" id="queueBadges"></div>
+                    <button class="queue-btn" id="queueClearBtn">Clear finished</button>
+                </div>
+            </div>
+            <div class="queue-list" id="queueList">
+                <div class="queue-empty">Queue is empty.</div>
+            </div>
+        </section>
 
         <div class="dashboard-grid" id="libraryGrid">
             <!-- Story cards will be rendered here -->

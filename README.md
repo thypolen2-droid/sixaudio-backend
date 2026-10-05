@@ -20,13 +20,15 @@
 
 ### 📱 Connectivity & Cloud
 - **Mobile Sync / Web Player**: Built-in **FastAPI** server with a premium, responsive Web UI. 
+- **Synchronized Transcript**: Interactive chapter transcript view with estimated sentence cues and click-to-seek playback.
 - **QR Code Pairing**: Instant mobile connection via local network discovery—just scan and listen.
 - **Real-time Monitoring**: WebSocket-powered task tracking. Watch your scraping and TTS progress live on your mobile device.
-- **Cloud Storage**: One-click synchronization to **Firebase / Google Cloud Storage**.
+- **Cloud Storage**: One-click synchronization to **Google Drive** or **Firebase / Google Cloud Storage**.
 
 ### 🧹 Intelligence & Cleanup
 - **Smart Cleaner**: Proactively removes site metadata, "Author Notes", and promotional scripts.
 - **Corruption Fixer**: Deep scan algorithm that identifies and repairs empty, truncated, or failed audio files.
+- **Task & State Continuity**: Centralized [TASKS.md](file:///e:/Project/python/sixaudio-backend/TASKS.md) tracking for active focus, completion logs, and multi-agent handoff.
 - **Progress Tracking**: Persistent JSON-based state management with per-novel tracking.
 
 ---
@@ -95,14 +97,19 @@ python app.py
 
 ```text
 ├── app.py              # Unified Dashboard (TUI Entry)
+├── sync_to_cloud.py    # Google Drive & Firebase sync
+├── TASKS.md            # Task tracking & multi-agent handoff log
 ├── modules/
-│   ├── scraper.py     # Chromium-based scraping engine
-│   ├── tts.py         # edge-tts manager & SSML logic
-│   ├── ui.py          # Carbon-style Rich UI
-│   ├── server.py      # FastAPI Server (Mobile Access)
-│   └── storage.py     # Cloud & Local IO providers
-├── Library/           # Local Data (TXT + MP3)
-└── assets/            # Project documentation assets
+│   ├── scraper.py      # DrissionPage Novel Scraper Engine
+│   ├── server.py       # FastAPI Server & Audio Streaming routes
+│   ├── tts.py          # edge-tts manager & SSML logic
+│   ├── cleaner.py      # Text cleaner & noise removal
+│   ├── events.py       # Local and remote event bus
+│   ├── ui.py           # Carbon-style Rich UI
+│   ├── storage.py      # Cloud (Google Drive / Firebase) & Local storage
+│   └── templates/      # Web player HTML/JS/CSS assets
+├── Library/            # Local Data (TXT chapters + MP3 audiobooks)
+└── assets/             # Project documentation assets
 ```
 
 ---

@@ -42,7 +42,9 @@ const PlayerState = {
     isPlaying: false,
     isShuffled: false,
     isRepeating: false,
-    currentSpeed: 1.0
+    currentSpeed: 1.0,
+    transcriptText: '',
+    transcriptCues: []
 };
 
 // ============================================
@@ -61,6 +63,7 @@ const ProgressTracker = {
                 chapterIndex: PlayerState.currentIndex,
                 chapterFile: PlayerState.currentFiles[PlayerState.currentIndex],
                 playbackTime: DOM.audioPlayer.currentTime,
+                duration: Number.isFinite(DOM.audioPlayer.duration) ? DOM.audioPlayer.duration : null,
                 timestamp: new Date().toISOString(),
                 speed: PlayerState.currentSpeed
             };
@@ -160,6 +163,8 @@ const DOM = {
     waveform: document.getElementById('waveform'),
     currentTimeEl: document.getElementById('currentTime'),
     totalTimeEl: document.getElementById('totalTime'),
+    transcriptList: document.getElementById('transcriptList'),
+    transcriptTiming: document.getElementById('transcriptTiming'),
 
     // Track Info
     trackTitle: document.getElementById('trackTitle'),
@@ -538,6 +543,91 @@ function updateWaveform() {
 }
 
 // ============================================
+// TRANSCRIPT FUNCTIONS
+// ============================================
+function splitTranscript(text) {
+    return (text.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [text])
+        .map(line => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
+}
+
+function buildTranscriptCues() {
+    const duration = DOM.audioPlayer.duration;
+    if (!PlayerState.transcriptText || !Number.isFinite(duration) || duration <= 0) return;
+    const lines = splitTranscript(PlayerState.transcriptText);
+    const totalWeight = lines.reduce((total, line) => total + Math.max(line.length, 1), 0);
+    let position = 0;
+    PlayerState.transcriptCues = lines.map(text => {
+        const start = position;
+        position += duration * Math.max(text.length, 1) / totalWeight;
+        return { text, start, end: position };
+    });
+    renderTranscript();
+}
+
+async function loadTranscript(file) {
+    PlayerState.transcriptText = '';
+    PlayerState.transcriptCues = [];
+    if (DOM.transcriptList) {
+        DOM.transcriptList.innerHTML = '<p class="transcript-empty">Loading transcript…</p>';
+    }
+    try {
+        const baseUrl = (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL : '';
+        // Cache-bust: intermediary/browser caches can hold a stale empty 204 for
+        // this URL from before captions existed, which shows as
+        // "Transcript unavailable". Same ?t= convention loadLibrary() uses.
+        const response = await fetch(`${baseUrl}/api/stories/${encodeURIComponent(PlayerState.currentStory)}/transcript/${encodeURIComponent(file)}?t=${Date.now()}`, { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok || (!data.text && !data.cues)) throw new Error(data.error || 'Transcript unavailable');
+        
+        if (data.cues && Array.isArray(data.cues) && data.cues.length > 0) {
+            PlayerState.transcriptText = data.text || '';
+            PlayerState.transcriptCues = data.cues;
+            if (DOM.transcriptTiming) {
+                DOM.transcriptTiming.textContent = 'EXACT TIMING';
+                DOM.transcriptTiming.classList.add('exact');
+            }
+            renderTranscript();
+        } else {
+            PlayerState.transcriptText = data.text || '';
+            if (DOM.transcriptTiming) {
+                DOM.transcriptTiming.textContent = 'ESTIMATED TIMING';
+                DOM.transcriptTiming.classList.remove('exact');
+            }
+            buildTranscriptCues();
+        }
+    } catch {
+        if (DOM.transcriptList) {
+            DOM.transcriptList.innerHTML = '<p class="transcript-empty">Transcript unavailable for this chapter.</p>';
+        }
+    }
+}
+
+function renderTranscript() {
+    if (!DOM.transcriptList || !PlayerState.transcriptCues.length) return;
+    DOM.transcriptList.replaceChildren(...PlayerState.transcriptCues.map(cue => {
+        const button = document.createElement('button');
+        button.className = 'transcript-cue';
+        button.type = 'button';
+        button.innerHTML = `<span class="transcript-cue-time">${formatTime(cue.start)}</span><span class="transcript-cue-text"></span>`;
+        button.querySelector('.transcript-cue-text').textContent = cue.text;
+        button.addEventListener('click', () => { DOM.audioPlayer.currentTime = cue.start; });
+        return button;
+    }));
+    updateTranscript();
+}
+
+function updateTranscript() {
+    if (!DOM.transcriptList || !PlayerState.transcriptCues.length) return;
+    const current = DOM.audioPlayer.currentTime;
+    const activeIndex = PlayerState.transcriptCues.findIndex(cue => current >= cue.start && current < cue.end);
+    DOM.transcriptList.querySelectorAll('.transcript-cue').forEach((cue, index) => {
+        const active = index === activeIndex;
+        cue.classList.toggle('active', active);
+        if (active) cue.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+}
+
+// ============================================
 // API FUNCTIONS
 // ============================================
 
@@ -637,6 +727,9 @@ function playFile(index, startTime = 0) {
     // Load and play audio
     DOM.audioPlayer.src = `/stream/${encodeURIComponent(PlayerState.currentStory)}/${encodeURIComponent(file)}`;
     DOM.audioPlayer.playbackRate = PlayerState.currentSpeed;
+    if (typeof loadTranscript === 'function') {
+        loadTranscript(file);
+    }
 
     // Set start time when metadata is loaded
     if (startTime > 0) {
@@ -899,10 +992,18 @@ function initializeEventListeners() {
         if (Math.floor(DOM.audioPlayer.currentTime) % 5 === 0) {
             ProgressTracker.save();
         }
+
+        if (typeof updateTranscript === 'function') updateTranscript();
+        if (typeof refreshChapterProgress === 'function') refreshChapterProgress();
     });
 
     DOM.audioPlayer.addEventListener('loadedmetadata', () => {
         DOM.totalTimeEl.textContent = formatTime(DOM.audioPlayer.duration);
+        ProgressTracker.save();
+        if (typeof buildTranscriptCues === 'function' && PlayerState.transcriptText && (!PlayerState.transcriptCues || PlayerState.transcriptCues.length === 0)) {
+            buildTranscriptCues();
+        }
+        if (typeof refreshChapterProgress === 'function') refreshChapterProgress();
     });
 
     DOM.audioPlayer.addEventListener('ended', () => {
@@ -1245,7 +1346,8 @@ if (document.readyState === 'loading') {
 // ============================================
 // Debug Console Toggle (5 taps on title)
 let titleClicks = 0;
-document.querySelector('.app-title').addEventListener('click', () => {
+const debugTitle = document.querySelector('.app-title');
+if (debugTitle) debugTitle.addEventListener('click', () => {
     titleClicks++;
     if (titleClicks >= 5) {
         const debugBox = document.getElementById('debugConsole');

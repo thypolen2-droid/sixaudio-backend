@@ -26,7 +26,10 @@ const DOM = {
     dashScrapeModalClose: document.getElementById('dashScrapeModalClose'),
     dashScrapeModalCancel: document.getElementById('dashScrapeModalCancel'),
     dashMenuClose: document.getElementById('dashMenuClose'),
-    sidebarClose: document.getElementById('sidebarClose')
+    sidebarClose: document.getElementById('sidebarClose'),
+    queueList: document.getElementById('queueList'),
+    queueBadges: document.getElementById('queueBadges'),
+    queueClearBtn: document.getElementById('queueClearBtn')
 };
 
 /**
@@ -45,6 +48,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     fetchLibrary();
+    fetchQueue();
+    setInterval(fetchQueue, 3000);
+
+    if (DOM.queueClearBtn) {
+        DOM.queueClearBtn.addEventListener('click', async () => {
+            try {
+                await fetch(`${CONFIG.API_BASE_URL}/api/scrape/queue`, { method: 'DELETE' });
+                fetchQueue();
+            } catch (error) {
+                console.error('Failed to clear queue:', error);
+            }
+        });
+    }
 
     // Event Listeners
     if (DOM.startScrapeBtn) DOM.startScrapeBtn.addEventListener('click', startScraping);
@@ -177,6 +193,11 @@ async function startScraping() {
     const url = DOM.scrapeUrl.value;
     if (!url) return alert('Please enter a story URL');
 
+    if (DOM.startScrapeBtn) {
+        DOM.startScrapeBtn.disabled = true;
+        DOM.startScrapeBtn.textContent = 'Starting...';
+    }
+
     try {
         const response = await fetch(`${CONFIG.API_BASE_URL}/api/actions/scrape`, {
             method: 'POST',
@@ -187,13 +208,27 @@ async function startScraping() {
                 headless: DOM.scrapeHeadless.checked
             })
         });
+
         const result = await response.json();
-        console.log("Scrape triggered:", result);
+
+        // The server returns HTTP 4xx/5xx with a `detail` message on failure.
+        // Without this check the modal just closed and nothing appeared to happen.
+        if (!response.ok) {
+            throw new Error(result.detail || `Server returned ${response.status}`);
+        }
+
+        console.log('Scrape triggered:', result);
         closeModal('scrapeModal');
         toggleSidebar(true);
+        pollTasks();
     } catch (error) {
         console.error('Scraping request failed:', error);
-        alert('Request failed.');
+        alert('Scraping failed: ' + error.message);
+    } finally {
+        if (DOM.startScrapeBtn) {
+            DOM.startScrapeBtn.disabled = false;
+            DOM.startScrapeBtn.textContent = 'Start Scraping';
+        }
     }
 }
 
@@ -227,4 +262,87 @@ function openModal(id) {
 function closeModal(id) {
     const modal = document.getElementById(id);
     if (modal) modal.classList.remove('active');
+}
+
+/**
+ * SCRAPE QUEUE
+ */
+const QUEUE_STATUS_LABEL = {
+    pending: 'Queued',
+    running: 'Scraping',
+    completed: 'Done',
+    failed: 'Failed',
+    cancelled: 'Cancelled'
+};
+
+async function fetchQueue() {
+    if (!DOM.queueList) return;
+    try {
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/scrape/queue`);
+        const data = await response.json();
+        renderQueue(data.jobs || [], data.counts || {});
+    } catch (error) {
+        console.error('Failed to fetch queue:', error);
+    }
+}
+
+function renderQueue(jobs, counts) {
+    if (DOM.queueBadges) {
+        DOM.queueBadges.innerHTML = ['pending', 'running', 'completed', 'failed']
+            .filter(s => counts[s])
+            .map(s => `<span class="queue-badge ${s}">${counts[s]} ${QUEUE_STATUS_LABEL[s] || s}</span>`)
+            .join('');
+    }
+
+    if (!DOM.queueList) return;
+    if (!jobs.length) {
+        DOM.queueList.innerHTML = '<div class="queue-empty">Queue is empty.</div>';
+        return;
+    }
+
+    DOM.queueList.innerHTML = jobs.map(job => {
+        const status = job.status || 'pending';
+        const label = QUEUE_STATUS_LABEL[status] || status;
+        const attempts = job.attempts > 1 ? ` <span class="stat-label">(try ${job.attempts})</span>` : '';
+        const err = job.error ? ` title="${job.error.replace(/"/g, '&quot;')}"` : '';
+        const canCancel = status === 'pending';
+        const canRetry = status === 'failed';
+
+        return `
+            <div class="queue-row ${status}"${err}>
+                <span class="queue-url">${job.url}${attempts}</span>
+                <span class="queue-badge ${status}">${label}</span>
+                <span class="queue-actions">
+                    ${canCancel ? `<button class="queue-btn" onclick="cancelQueueJob(${job.id})">Cancel</button>` : ''}
+                    ${canRetry ? `<button class="queue-btn" onclick="retryQueueJob(${job.id})">Retry</button>` : ''}
+                </span>
+            </div>
+        `;
+    }).join('');
+}
+
+async function cancelQueueJob(jobId) {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/scrape/queue/${jobId}`, { method: 'DELETE' });
+        if (!response.ok) {
+            const err = await response.json();
+            alert(err.detail || 'Could not cancel job.');
+        }
+        fetchQueue();
+    } catch (error) {
+        alert('Cancel failed: ' + error.message);
+    }
+}
+
+async function retryQueueJob(jobId) {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/scrape/queue/${jobId}/retry`, { method: 'POST' });
+        if (!response.ok) {
+            const err = await response.json();
+            alert(err.detail || 'Could not retry job.');
+        }
+        fetchQueue();
+    } catch (error) {
+        alert('Retry failed: ' + error.message);
+    }
 }

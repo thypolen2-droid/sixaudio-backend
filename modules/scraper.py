@@ -39,6 +39,23 @@ class NovelScraper:
             'next_button_selector': 'css:a.cha-next, css:a.j_next_cha, css:a.j_next_chapter',
             'next_disabled_check': lambda btn: not btn.attr('href') or 'javascript' in (btn.attr('href') or ''),
             'url_title_pattern': r"/book/([^/]+?)_\d+/?",
+        },
+        'freewebnovel': {
+            'name': 'FreeWebNovel',
+            'domain': 'freewebnovel.com',
+            # Content lives in <div class="txt ">.
+            # Must be CSS-prefixed: DrissionPage reads a bare 'div.txt' as a
+            # text locator and matches nothing. Verified against the live page.
+            'content_selectors': ['css:div.txt', 'css:.txt'],
+            # The chapter title is the <h4> inside div.txt; page <h1 class="tit">
+            # is the STORY title, which would name every file identically.
+            'title_selectors': ['css:div.txt h4', 'css:h4', 'tag:h4'],
+            'next_button_selector': 'css:a[rel=next], css:.next, css:a:contains("Next")',
+            'next_disabled_check': lambda btn: not btn.attr('href') or 'chapter-' not in (btn.attr('href') or ''),
+            'url_title_pattern': r"/novel/([^/]+)/",
+            # Chapter URLs are /novel/<slug>/chapter-<n>, so the next link can be
+            # derived from the current URL without relying on a "next" button.
+            'url_chapter_pattern': r"/chapter-(\d+)",
         }
     }
 
@@ -61,9 +78,29 @@ class NovelScraper:
             print(f"[{level.upper()}] {msg}")
 
     def detect_site(self, url):
-        """Detect which site configuration to use based on URL."""
+        """Detect which site configuration to use based on URL.
+
+        Matches on the hostname rather than a substring of the whole URL:
+        a plain `in` test makes "freewebnovel.com" match the "webnovel.com"
+        entry (and would match lookalike hosts such as "notnovelbin.com").
+        """
+        if not url:
+            return None, None
+
+        host = url
+        if '://' in host:
+            host = host.split('://', 1)[1]
+        host = host.split('/', 1)[0].split('?', 1)[0].lower()
+        if host.startswith('www.'):
+            host = host[4:]
+        # Strip the port so "example.com:8000" still matches.
+        host = host.split(':', 1)[0]
+
         for site_key, config in self.SITE_CONFIGS.items():
-            if config['domain'] in url:
+            domain = config['domain'].lower()
+            if domain.startswith('www.'):
+                domain = domain[4:]
+            if host == domain or host.endswith('.' + domain):
                 return site_key, config
         return None, None
     
@@ -140,6 +177,7 @@ class NovelScraper:
             current_url = next_url
             chapter_index = last_chapter_num + 1
             story_dir_str = str(story_dir)
+            self._progress_start(100, f"Resuming {story_dir.name}")
             
             while current_url:
                 # TODO: use status context properly via events if needed, for now just log
@@ -152,9 +190,13 @@ class NovelScraper:
                 except Exception as e:
                     self._log(f"❌ Network error: {e}", "error")
                     break
+
+                # Cloudflare can challenge any page, not just catalog pages.
+                if not await self._wait_for_browser_challenge(page):
+                    break
                 
                 page_last_chapter = chapter_index
-                if 'webnovel.com' in current_url:
+                if 'www.webnovel.com' in current_url:
                     result = await self._save_webnovel_page_chapters(
                         page,
                         site_config,
@@ -199,6 +241,13 @@ class NovelScraper:
                                     "chapter_title": chapter_title_text,
                                     "status": "scraping"
                                 })
+
+                            if self.events:
+                                self.events.progress_update(
+                                    "scrape",
+                                    1,
+                                    f"[{chapter_index}] {filename}"
+                                )
                         else:
                             self._log(f"⚠️ Warning: No content found for {current_url}", "warning")
                 
@@ -208,6 +257,7 @@ class NovelScraper:
                 if not next_url:
                     self._log("✅ Scraping Completed! (No next link)", "success")
                     tracker.mark_complete()
+                    self._progress_finish()
                     break
                 
                 current_url = next_url
@@ -385,6 +435,10 @@ class NovelScraper:
                         self._log(f"❌ Network error: {e}", "error")
                         break
 
+                # Cloudflare can challenge any page, not just catalog pages.
+                if not await self._wait_for_browser_challenge(page):
+                    break
+
                 # 1. Setup Story Directory (One time)
                 if story_dir is None:
                     story_title = self._get_story_title(page, site_config)
@@ -402,6 +456,7 @@ class NovelScraper:
                     # Initialize progress tracker
                     progress_tracker = ProgressTracker(story_path)
                     progress_tracker.update_metadata(story_url=start_url, site=site_key)
+                    self._progress_start(100, f"Scraping {safe_title}")
 
                     if story_already_exists:
                         repaired = await self.recover_incomplete_chapters(
@@ -426,7 +481,7 @@ class NovelScraper:
                             break
 
                 page_last_chapter = chapter_index
-                if 'webnovel.com' in current_url:
+                if 'www.webnovel.com' in current_url:
                     result = await self._save_webnovel_page_chapters(
                         page,
                         site_config,
@@ -472,6 +527,13 @@ class NovelScraper:
                                     "chapter_title": chapter_title_text,
                                     "status": "scraping"
                                 })
+
+                            if self.events:
+                                self.events.progress_update(
+                                    "scrape",
+                                    1,
+                                    f"[{chapter_index}] {filename}"
+                                )
                         else:
                             self._log(f"⚠️ Warning: No content found for {current_url}", "warning")
 
@@ -482,6 +544,7 @@ class NovelScraper:
                     self._log("✅ Scraping Completed!", "success")
                     if progress_tracker:
                         progress_tracker.mark_complete()
+                    self._progress_finish()
                     break
                 
                 current_url = next_url
@@ -505,7 +568,7 @@ class NovelScraper:
         try:
             url = page.url
             pattern = site_config.get('url_title_pattern')
-            if 'webnovel.com' in url and '/catalog' in url:
+            if 'www.webnovel.com' in url and '/catalog' in url:
                 try:
                     story_title_ele = page.ele('tag:h1', timeout=2)
                     story_title_text = (story_title_ele.text or "").strip() if story_title_ele else ""
@@ -538,6 +601,9 @@ class NovelScraper:
     def _get_chapter_title(self, page, site_config, index):
         chp_title_ele = None
         timeout = 1 if self.fast_mode else 2  # Faster element detection
+        # On FreeWebNovel the <h1 class="tit"> is the STORY title; using it would
+        # name every chapter file identically, so fall back to a computed title.
+        skip_story_h1 = site_config.get('name') == 'FreeWebNovel'
         for selector in site_config['title_selectors']:
             try:
                 chp_title_ele = page.ele(selector, timeout=timeout)
@@ -545,7 +611,15 @@ class NovelScraper:
             except: continue
         
         if chp_title_ele:
-            return chp_title_ele.text.strip()
+            text = chp_title_ele.text.strip()
+            if text and not (skip_story_h1 and text.lower() == (page.title or '').split('-')[0].strip().lower()):
+                return text
+
+        if skip_story_h1:
+            match = re.search(r"/chapter-(\d+)", page.url or "")
+            if match:
+                return f"Chapter {match.group(1)}"
+
         return f"Chapter {index}"
 
     def _extract_webnovel_paragraphs(self, elements):
@@ -792,6 +866,9 @@ class NovelScraper:
         )
 
         completed = True
+        failed_chapters = []
+        consecutive_failures = 0
+        max_consecutive_failures = 5
         for index, entry in enumerate(chapter_entries[start_index:], start=start_index):
             chapter_num = entry["chapter_num"]
             current_url = entry["url"]
@@ -801,13 +878,26 @@ class NovelScraper:
                 page.get(current_url)
                 await asyncio.sleep(0.5 if self.fast_mode else 1.5)
             except Exception as e:
-                self._log(f"❌ Failed to open Webnovel chapter {chapter_num}: {e}", "error")
                 completed = False
-                break
+                consecutive_failures += 1
+                failed_chapters.append(chapter_num)
+                self._log(
+                    f"❌ Failed to open Webnovel chapter {chapter_num} ({consecutive_failures}/{max_consecutive_failures}): {e}",
+                    "error"
+                )
+                if consecutive_failures >= max_consecutive_failures:
+                    self._log(
+                        "🛑 Too many consecutive chapter failures. Stopping this run; progress is saved so the next run resumes here.",
+                        "error"
+                    )
+                    break
+                continue
 
+            consecutive_failures = 0
             chapter_title_text = self._get_chapter_title(page, site_config, chapter_num)
             if not chapter_title_text or chapter_title_text == f"Chapter {chapter_num}":
                 chapter_title_text = fallback_title
+
 
             safe_chapter_title = sanitize_filename(chapter_title_text)
             filename = f"{str(chapter_num).zfill(4)}_{safe_chapter_title}.txt"
@@ -830,6 +920,12 @@ class NovelScraper:
                         chapter_title_text,
                         filename=filename
                     )
+                    if self.events:
+                        self.events.progress_update(
+                            "scrape",
+                            1,
+                            f"[{index + 1}/{total_to_scrape}] {filename}"
+                        )
 
                     if progress_callback:
                         progress_callback({
@@ -843,9 +939,21 @@ class NovelScraper:
             if index < len(chapter_entries) - 1:
                 await self._wait_smart_delay()
 
+        if self.events:
+            self.events.progress_finish("scrape")
+
         if completed:
             progress_tracker.mark_complete()
             self._log("✅ Scraping Completed!", "success")
+        elif failed_chapters:
+            preview = ", ".join(str(n) for n in failed_chapters[:10])
+            if len(failed_chapters) > 10:
+                preview += f", ... (+{len(failed_chapters) - 10} more)"
+            self._log(
+                f"⚠️ Run finished with {len(failed_chapters)} chapter(s) not fetched: {preview}. "
+                "Re-run the scraper for this story to retry just those chapters.",
+                "warning"
+            )
 
     def _collect_webnovel_chapter_blocks(self, page):
         selectors = [
@@ -1102,7 +1210,7 @@ class NovelScraper:
     async def _save_chapter_content(self, page, site_config, file_path, title):
         content_ele = None
         # Increase timeout for complex sites like Webnovel
-        timeout = 5 if 'webnovel.com' in page.url else (3 if self.fast_mode else 5)
+        timeout = 5 if 'www.webnovel.com' in page.url else (3 if self.fast_mode else 5)
         chapter_text = ""
         
         # Site-specific handling
@@ -1126,7 +1234,7 @@ class NovelScraper:
                     break
             except: continue
 
-        if 'webnovel.com' in page.url:
+        if 'www.webnovel.com' in page.url:
             # For direct chapter URLs, try extracting immediately first.
             # If Webnovel hasn't rendered enough text yet, we scroll and retry once.
             try:
@@ -1159,7 +1267,12 @@ class NovelScraper:
             chapter_text = content_ele.text.strip()
             
             # Simple content cleaning
-        if 'webnovel.com' in page.url and chapter_text:
+        if 'freewebnovel.com' in page.url:
+            # div.txt also holds the <h4> title, the site watermark and a Patreon
+            # plug, so the generic .text extraction would save all of that.
+            chapter_text = self._extract_freewebnovel_chapter(page, site_config)
+
+        if 'www.webnovel.com' in page.url and chapter_text:
             # Remove common footers of webnovel
             chapter_text = re.sub(r'Report .*? chapter', '', chapter_text)
             chapter_text = re.sub(r'Wait for the next .*?', '', chapter_text)
@@ -1172,9 +1285,105 @@ class NovelScraper:
                     f.write(title + "\n\n")
                 f.write(chapter_text)
             return True
-        elif 'webnovel.com' in page.url or content_ele:
+        elif 'www.webnovel.com' in page.url or content_ele:
             self._log(f"⚠️ Content too short ({content_len} chars). Might be empty or protected.", "warning")
         return False
+
+    # --- FreeWebNovel (freewebnovel.com) ---
+
+    # The site appends a Patreon plug to every chapter page, and the wording
+    # varies between chapters ("This book has...", "This novel have..."), so
+    # match the idea rather than the exact sentence.
+    _FWN_AD_PATTERNS = (
+        re.compile(r"patreon", re.IGNORECASE),
+        # Only the exact plug phrasing; prose can legitimately say "read ahead".
+        re.compile(r"to read ahead go to", re.IGNORECASE),
+        re.compile(r"\b\d+\s+chapters?\s+(?:in|on)\s+(?:my|our)\b", re.IGNORECASE),
+        re.compile(r"^(?:this (?:book|novel|story))\s+(?:has|have)\b.*\bchapters?\b", re.IGNORECASE),
+    )
+
+    def _is_fwn_ad_paragraph(self, text: str) -> bool:
+        stripped = text.strip()
+        if not stripped:
+            return True
+        return any(pattern.search(stripped) for pattern in self._FWN_AD_PATTERNS)
+
+    def _extract_freewebnovel_chapter(self, page, site_config):
+        """Pull only the story paragraphs out of <div class="txt ">."""
+        container = None
+        for selector in site_config.get("content_selectors", []):
+            try:
+                container = page.ele(selector, timeout=3)
+            except Exception:
+                container = None
+            if container:
+                break
+
+        if not container:
+            return ""
+
+        paragraphs = []
+        try:
+            elements = container.eles("tag:p", timeout=2) or []
+        except Exception:
+            elements = []
+
+        for element in elements:
+            try:
+                text = (element.text or "").strip()
+            except Exception:
+                continue
+            if self._is_fwn_ad_paragraph(text):
+                continue
+            paragraphs.append(text)
+
+        if not paragraphs:
+            # Fall back to the container text with the ad lines stripped out.
+            # DrissionPage exposes .text as a property, but older/edge builds
+            # and test doubles may hand back a callable, so handle both.
+            try:
+                raw = container.text
+                if callable(raw):
+                    raw = raw()
+            except Exception:
+                return ""
+            if not isinstance(raw, str):
+                return ""
+            kept = [
+                line.strip()
+                for line in raw.splitlines()
+                if line.strip() and not self._is_fwn_ad_paragraph(line)
+            ]
+            return "\n\n".join(kept)
+
+        return "\n\n".join(paragraphs)
+
+    def _freewebnovel_next_url(self, current_url: str):
+        """Derive chapter N+1 from the current URL.
+
+        The site has no reliable "next" anchor, but chapter URLs are
+        /novel/<slug>/chapter-<n>, so the successor is deterministic.
+        """
+        pattern = self.SITE_CONFIGS["freewebnovel"].get("url_chapter_pattern")
+        match = re.search(pattern, current_url or "")
+        if not match:
+            return None
+
+        next_num = int(match.group(1)) + 1
+        slug = re.search(r"/novel/([^/]+)/", current_url)
+        if not slug:
+            return None
+        return f"https://www.freewebnovel.com/novel/{slug.group(1)}/chapter-{next_num}"
+
+    def _progress_start(self, total, description):
+        """Report the start of a scrape run, if an event handler is attached."""
+        if self.events:
+            self.events.progress_start("scrape", total, description)
+
+    def _progress_finish(self):
+        """Report the end of a scrape run, if an event handler is attached."""
+        if self.events:
+            self.events.progress_finish("scrape")
 
     async def _get_next_url(self, page, site_config):
         """Get next chapter URL with retry logic for reliability."""
@@ -1193,8 +1402,15 @@ class NovelScraper:
                 self._log("⚠️ Timeout waiting for human verification.", "error")
                 return None
 
+        # FreeWebNovel has no dependable "next" anchor, but chapter URLs are
+        # sequential, so derive the successor instead of scraping the DOM.
+        if 'freewebnovel.com' in page.url:
+            derived = self._freewebnovel_next_url(page.url)
+            if derived:
+                return derived
+
         # For Webnovel, ensure we scroll down to make the button interactable/visible
-        if 'webnovel.com' in page.url:
+        if 'www.webnovel.com' in page.url:
             await self._progressive_scroll_webnovel(page, site_config)
 
         for attempt in range(max_retries):
@@ -1224,7 +1440,7 @@ class NovelScraper:
                 else:
                     # Button not found, might need to wait for page load or scroll
                     if attempt < max_retries - 1:
-                        if 'webnovel.com' in page.url:
+                        if 'www.webnovel.com' in page.url:
                             await self._progressive_scroll_webnovel(page, site_config)
                         else:
                             page.scroll.to_bottom()
@@ -1304,25 +1520,3 @@ class NovelScraper:
              # self.events.progress_finish("wait") # optional
         else:
              await asyncio.sleep(delay)
-
-
-# Helper function extracted to keep class clean
-def get_story_title_logic(page, site_config):
-
-    try:
-        url = page.url
-        pattern = site_config.get('url_title_pattern')
-        if pattern:
-             match = re.search(pattern, url)
-             if match:
-                slug = match.group(1)
-                return slug.replace('--', ' - ').replace('-', ' ').title().strip()
-        
-        page_title = page.title
-        if "|" in page_title:
-             return page_title.split("|")[1].strip()
-        if " - " in page_title:
-             return page_title.split(" - ")[0].strip()
-        return "Unknown_Story"
-    except:
-        return "Unknown_Story"

@@ -46,3 +46,8 @@ check_*.py
 
 # Firebase hidden data
 .firebase/
+
+# Local runtime databases
+*.db
+*.sqlite3
+

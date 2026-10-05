@@ -102,10 +102,11 @@ function renderChapterCards(chaptersToRender = null) {
     const container = document.getElementById('chaptersContainer');
     if (!container) return;
 
-    const chapters = chaptersToRender || PlayerState.currentFiles;
+    // Preserve original indexes when rendering a filtered list.
+    const chapters = chaptersToRender || PlayerState.currentFiles.map((file, index) => ({ file, index }));
     const progress = getProgressForStory(PlayerState.currentStory);
 
-    container.innerHTML = chapters.map((file, index) => {
+    container.innerHTML = chapters.map(({ file, index }) => {
         const status = getChapterStatus(index, progress);
 
         return `
@@ -119,7 +120,9 @@ function renderChapterCards(chaptersToRender = null) {
                     <div class="chapter-card-title">${getChapterName(file)}</div>
                     ${status.progress !== undefined ? `
                         <div class="chapter-progress-container">
-                            <div class="chapter-progress-bar">
+                            <div class="chapter-progress-bar" role="slider" tabindex="0"
+                                 aria-label="Seek within chapter" aria-valuemin="0" aria-valuemax="100"
+                                 aria-valuenow="${Math.round(status.progress)}" data-seek-index="${index}">
                                 <div class="chapter-progress-fill" style="width: ${status.progress}%"></div>
                             </div>
                             <span class="chapter-time-left">${status.timeLeft || '0:00'} left</span>
@@ -137,6 +140,20 @@ function renderChapterCards(chaptersToRender = null) {
             </div>
         `;
     }).join('');
+
+    // Prevent a seek click from bubbling to the card and restarting the chapter.
+    container.querySelectorAll('[data-seek-index]').forEach(bar => {
+        const seek = event => seekChapterProgress(event, Number(bar.dataset.seekIndex));
+        bar.addEventListener('click', seek);
+        bar.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                seek(event);
+            }
+        });
+    });
+
+    ensureSavedProgressDuration(progress);
 
     // Scroll into view if there's an in-progress chapter
     setTimeout(() => {
@@ -169,13 +186,27 @@ function getChapterStatus(index, progress) {
     }
 
     if (index === progress.chapterIndex) {
+        const audio = document.getElementById('audioPlayer');
+        const isCurrentChapter = PlayerState.currentIndex === index;
+        const duration = isCurrentChapter && Number.isFinite(audio?.duration)
+            ? audio.duration
+            : Number(progress.duration);
+        const elapsed = isCurrentChapter && Number.isFinite(audio?.currentTime)
+            ? audio.currentTime
+            : Number(progress.playbackTime) || 0;
+        const progressPercent = Number.isFinite(duration) && duration > 0
+            ? Math.min(100, Math.max(0, (elapsed / duration) * 100))
+            : 0;
+
         return {
             class: 'in-progress',
             label: 'IN PROGRESS',
             icon: '⏸',
             iconClass: 'pause',
-            progress: 45,
-            timeLeft: '05:42'
+            progress: progressPercent,
+            timeLeft: Number.isFinite(duration) && duration > 0
+                ? formatTime(Math.max(0, duration - elapsed))
+                : '—'
         };
     }
 
@@ -184,6 +215,66 @@ function getChapterStatus(index, progress) {
         label: 'UNPLAYED',
         icon: null
     };
+}
+
+// A saved listening position does not include media metadata from older page
+// versions. Load metadata for only the saved chapter, without playing it, so
+// the chapter card can show an accurate percentage and remaining time.
+let pendingDurationLookup = null;
+function ensureSavedProgressDuration(progress) {
+    if (!progress || Number.isFinite(Number(progress.duration)) || !progress.chapterFile) return;
+
+    const lookupKey = `${progress.story}:${progress.chapterFile}`;
+    if (pendingDurationLookup === lookupKey) return;
+    pendingDurationLookup = lookupKey;
+
+    const metadataAudio = new Audio();
+    metadataAudio.preload = 'metadata';
+    metadataAudio.addEventListener('loadedmetadata', () => {
+        pendingDurationLookup = null;
+        if (!Number.isFinite(metadataAudio.duration) || metadataAudio.duration <= 0) return;
+
+        const saved = getProgressForStory(progress.story);
+        if (!saved || saved.chapterFile !== progress.chapterFile) return;
+
+        saved.duration = metadataAudio.duration;
+        localStorage.setItem('tts_listening_progress', JSON.stringify(saved));
+        refreshChapterProgress();
+    }, { once: true });
+    metadataAudio.addEventListener('error', () => { pendingDurationLookup = null; }, { once: true });
+    metadataAudio.src = `/stream/${encodeURIComponent(progress.story)}/${encodeURIComponent(progress.chapterFile)}`;
+}
+
+/** Seek the current chapter from its progress track. */
+function seekChapterProgress(event, index) {
+    event.stopPropagation();
+    const audio = document.getElementById('audioPlayer');
+    if (PlayerState.currentIndex !== index || !Number.isFinite(audio?.duration) || audio.duration <= 0) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const percentage = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    audio.currentTime = audio.duration * percentage;
+    refreshChapterProgress();
+}
+
+/** Keep the open chapter view in sync while its audio plays. */
+function refreshChapterProgress() {
+    const chapterView = document.getElementById('chapterView');
+    if (!chapterView || chapterView.style.display === 'none') return;
+
+    const progress = getProgressForStory(PlayerState.currentStory);
+    if (!progress || PlayerState.currentIndex !== progress.chapterIndex) return;
+
+    const status = getChapterStatus(progress.chapterIndex, progress);
+    const card = document.querySelector(`.chapter-card[data-index="${progress.chapterIndex}"]`);
+    if (!card || status.progress === undefined) return;
+
+    const fill = card.querySelector('.chapter-progress-fill');
+    const time = card.querySelector('.chapter-time-left');
+    const bar = card.querySelector('[data-seek-index]');
+    if (fill) fill.style.width = `${status.progress}%`;
+    if (time) time.textContent = `${status.timeLeft} left`;
+    if (bar) bar.setAttribute('aria-valuenow', Math.round(status.progress));
 }
 
 /**
@@ -231,9 +322,9 @@ function filterChapters(query) {
         return;
     }
 
-    const filtered = PlayerState.currentFiles.filter(file =>
-        file.toLowerCase().includes(query.toLowerCase())
-    );
+    const filtered = PlayerState.currentFiles
+        .map((file, index) => ({ file, index }))
+        .filter(({ file }) => file.toLowerCase().includes(query.toLowerCase()));
     renderChapterCards(filtered);
 }
 
@@ -247,7 +338,7 @@ function filterChaptersByStatus(status) {
     }
 
     const progress = getProgressForStory(PlayerState.currentStory);
-    const filtered = PlayerState.currentFiles.filter((file, index) => {
+    const filtered = PlayerState.currentFiles.map((file, index) => ({ file, index })).filter(({ index }) => {
         const chapterStatus = getChapterStatus(index, progress);
         return chapterStatus.class === status.replace('progress', 'in-progress');
     });

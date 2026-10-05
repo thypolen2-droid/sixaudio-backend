@@ -8,12 +8,28 @@
 // ============================================
 // CONFIGURATION
 // ============================================
+/**
+ * Debug Log on UI
+ */
+const debugLog = (msg, level = 'info') => {
+    const el = document.getElementById('debugOutput');
+    if (!el) return;
+    const item = document.createElement('div');
+    const color = level === 'error' ? '#f00' : (level === 'success' ? '#0f0' : '#0ff');
+    item.style.color = color;
+    item.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    el.appendChild(item);
+    el.parentElement.scrollTop = el.scrollHeight;
+    console.log(`[DEBUG] ${msg}`);
+};
+
 const CONFIG = {
-    // If running on Firebase/Cloud, use the Render backend URL. 
-    // If local, use relative paths.
-    API_BASE_URL: (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
-                  ? '' 
-                  : 'https://sixaudio-backend.onrender.com'
+    // If running on local network (IP), hostname (localhost), or development, use relative paths.
+    // ONLY use the production backend if specifically on one of our cloud domains.
+    API_BASE_URL: (
+        window.location.hostname.includes('onrender.com') || 
+        window.location.hostname.includes('firebaseapp.com')
+    ) ? 'https://sixaudio-backend.onrender.com' : ''
 };
 
 // ============================================
@@ -26,7 +42,9 @@ const PlayerState = {
     isPlaying: false,
     isShuffled: false,
     isRepeating: false,
-    currentSpeed: 1.0
+    currentSpeed: 1.0,
+    transcriptText: '',
+    transcriptCues: []
 };
 
 // ============================================
@@ -45,6 +63,7 @@ const ProgressTracker = {
                 chapterIndex: PlayerState.currentIndex,
                 chapterFile: PlayerState.currentFiles[PlayerState.currentIndex],
                 playbackTime: DOM.audioPlayer.currentTime,
+                duration: Number.isFinite(DOM.audioPlayer.duration) ? DOM.audioPlayer.duration : null,
                 timestamp: new Date().toISOString(),
                 speed: PlayerState.currentSpeed
             };
@@ -144,6 +163,8 @@ const DOM = {
     waveform: document.getElementById('waveform'),
     currentTimeEl: document.getElementById('currentTime'),
     totalTimeEl: document.getElementById('totalTime'),
+    transcriptList: document.getElementById('transcriptList'),
+    transcriptTiming: document.getElementById('transcriptTiming'),
 
     // Track Info
     trackTitle: document.getElementById('trackTitle'),
@@ -209,9 +230,15 @@ let availableStories = [];
  */
 async function loadLibrary() {
     try {
-        const response = await fetch(CONFIG.API_BASE_URL + '/api/stories');
+        debugLog('Fetching library from: ' + (CONFIG.API_BASE_URL || '/') + '/api/stories');
+        const response = await fetch(CONFIG.API_BASE_URL + '/api/stories?t=' + Date.now());
+        
+        if (!response.ok) throw new Error('HTTP status ' + response.status);
+        
         const data = await response.json();
         availableStories = data.stories || [];
+
+        debugLog('Success: Found ' + availableStories.length + ' stories');
 
         console.log('📚 Loaded', availableStories.length, 'stories');
 
@@ -231,6 +258,7 @@ async function loadLibrary() {
         await updateContinueListening();
 
     } catch (error) {
+        debugLog('Error loading library: ' + error.message, 'error');
         console.error('Error loading library:', error);
         DOM.libraryGrid.innerHTML = `
             <div class="library-empty">
@@ -249,7 +277,7 @@ function renderLibraryGrid(stories) {
     DOM.libraryEmpty.style.display = 'none ';
 
     DOM.libraryGrid.innerHTML = stories.map((story, index) => `
-        <div class="story-card" data-story="${story}" onclick="selectStoryForChapterView('${story}')">
+        <div class="story-card" data-story="${story}" onclick="selectStoryForChapterView('${story}')" style="animation-delay: ${index * 0.05}s">
             <div class="story-card-artwork">
                 ${getStoryIcon(index)}
             </div>
@@ -283,7 +311,7 @@ function renderLibraryGrid(stories) {
  * Get emoji icon for story based on index
  */
 function getStoryIcon(index) {
-    const icons = ['📖', '🎭', '🚀', '🏰', '🔮', '⚔️', '🌟', '🎪', '🌊', '🎨', '🎵', '🎬'];
+    const icons = ['📖', '🎭', '🚀', '🏰', '🔮', '⚔️', '🌟', '🎪', '🌊', '🎨', '🎵', '🎬', '🌌', '🐉', '🕯️', '🧿', '🧬', '🧭'];
     return icons[index % icons.length];
 }
 
@@ -515,6 +543,91 @@ function updateWaveform() {
 }
 
 // ============================================
+// TRANSCRIPT FUNCTIONS
+// ============================================
+function splitTranscript(text) {
+    return (text.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [text])
+        .map(line => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
+}
+
+function buildTranscriptCues() {
+    const duration = DOM.audioPlayer.duration;
+    if (!PlayerState.transcriptText || !Number.isFinite(duration) || duration <= 0) return;
+    const lines = splitTranscript(PlayerState.transcriptText);
+    const totalWeight = lines.reduce((total, line) => total + Math.max(line.length, 1), 0);
+    let position = 0;
+    PlayerState.transcriptCues = lines.map(text => {
+        const start = position;
+        position += duration * Math.max(text.length, 1) / totalWeight;
+        return { text, start, end: position };
+    });
+    renderTranscript();
+}
+
+async function loadTranscript(file) {
+    PlayerState.transcriptText = '';
+    PlayerState.transcriptCues = [];
+    if (DOM.transcriptList) {
+        DOM.transcriptList.innerHTML = '<p class="transcript-empty">Loading transcript…</p>';
+    }
+    try {
+        const baseUrl = (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL : '';
+        // Cache-bust: intermediary/browser caches can hold a stale empty 204 for
+        // this URL from before captions existed, which shows as
+        // "Transcript unavailable". Same ?t= convention loadLibrary() uses.
+        const response = await fetch(`${baseUrl}/api/stories/${encodeURIComponent(PlayerState.currentStory)}/transcript/${encodeURIComponent(file)}?t=${Date.now()}`, { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok || (!data.text && !data.cues)) throw new Error(data.error || 'Transcript unavailable');
+        
+        if (data.cues && Array.isArray(data.cues) && data.cues.length > 0) {
+            PlayerState.transcriptText = data.text || '';
+            PlayerState.transcriptCues = data.cues;
+            if (DOM.transcriptTiming) {
+                DOM.transcriptTiming.textContent = 'EXACT TIMING';
+                DOM.transcriptTiming.classList.add('exact');
+            }
+            renderTranscript();
+        } else {
+            PlayerState.transcriptText = data.text || '';
+            if (DOM.transcriptTiming) {
+                DOM.transcriptTiming.textContent = 'ESTIMATED TIMING';
+                DOM.transcriptTiming.classList.remove('exact');
+            }
+            buildTranscriptCues();
+        }
+    } catch {
+        if (DOM.transcriptList) {
+            DOM.transcriptList.innerHTML = '<p class="transcript-empty">Transcript unavailable for this chapter.</p>';
+        }
+    }
+}
+
+function renderTranscript() {
+    if (!DOM.transcriptList || !PlayerState.transcriptCues.length) return;
+    DOM.transcriptList.replaceChildren(...PlayerState.transcriptCues.map(cue => {
+        const button = document.createElement('button');
+        button.className = 'transcript-cue';
+        button.type = 'button';
+        button.innerHTML = `<span class="transcript-cue-time">${formatTime(cue.start)}</span><span class="transcript-cue-text"></span>`;
+        button.querySelector('.transcript-cue-text').textContent = cue.text;
+        button.addEventListener('click', () => { DOM.audioPlayer.currentTime = cue.start; });
+        return button;
+    }));
+    updateTranscript();
+}
+
+function updateTranscript() {
+    if (!DOM.transcriptList || !PlayerState.transcriptCues.length) return;
+    const current = DOM.audioPlayer.currentTime;
+    const activeIndex = PlayerState.transcriptCues.findIndex(cue => current >= cue.start && current < cue.end);
+    DOM.transcriptList.querySelectorAll('.transcript-cue').forEach((cue, index) => {
+        const active = index === activeIndex;
+        cue.classList.toggle('active', active);
+        if (active) cue.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+}
+
+// ============================================
 // API FUNCTIONS
 // ============================================
 
@@ -614,6 +727,9 @@ function playFile(index, startTime = 0) {
     // Load and play audio
     DOM.audioPlayer.src = `/stream/${encodeURIComponent(PlayerState.currentStory)}/${encodeURIComponent(file)}`;
     DOM.audioPlayer.playbackRate = PlayerState.currentSpeed;
+    if (typeof loadTranscript === 'function') {
+        loadTranscript(file);
+    }
 
     // Set start time when metadata is loaded
     if (startTime > 0) {
@@ -647,9 +763,13 @@ function updateChapterActiveState(activeIndex) {
  */
 function updateTrackInfo(file) {
     const title = file.replace('.mp3', '');
-    DOM.trackTitle.textContent = title;
+    const folderIcon = '<span style="font-size: 0.8em; margin-left: 8px; opacity: 0.6; vertical-align: middle;">📁</span>';
+    
+    // Set text and icon
+    DOM.trackTitle.innerHTML = title + folderIcon;
     DOM.trackArtist.textContent = PlayerState.currentStory;
-    DOM.miniTrackTitle.textContent = title;
+    
+    DOM.miniTrackTitle.innerHTML = title + folderIcon;
     DOM.miniTrackArtist.textContent = PlayerState.currentStory;
 }
 
@@ -797,51 +917,11 @@ function toggleSidebar(show) {
 /**
  * Poll for active tasks status
  */
-async function pollTasks() {
-    try {
-        const response = await fetch(CONFIG.API_BASE_URL + '/api/tasks/status');
-        const tasks = await response.json();
-
-        const taskIds = Object.keys(tasks);
-        if (taskIds.length === 0) {
-            DOM.taskStatus.innerHTML = '<div style="font-size: 11px; opacity: 0.5; text-align: center;">No active tasks</div>';
-            return;
-        }
-
-        DOM.taskStatus.innerHTML = '';
-        taskIds.forEach(id => {
-            const task = tasks[id];
-            const card = document.createElement('div');
-            card.className = 'task-card';
-            card.innerHTML = `
-                <div class="task-title">
-                    <span>${id.split('_')[0].toUpperCase()}</span>
-                    <span>${task.status}</span>
-                </div>
-                <div class="task-msg">${task.message}</div>
-                <div class="task-progress-bar">
-                    <div class="task-progress-fill" style="width: ${task.progress}%"></div>
-                </div>
-            `;
-            DOM.taskStatus.appendChild(card);
-        });
-
-        // Continue polling if any task is not completed or failed
-        const hasActiveNames = taskIds.some(id => tasks[id].status !== 'completed' && tasks[id].status !== 'failed');
-        if (hasActiveNames) {
-            setTimeout(pollTasks, 2000);
-        }
-    } catch (error) {
-        console.error('Polling failed:', error);
-    }
-}
-
 /**
- * Start a background task
- * @param {string} endpoint 
- * @param {Object} data 
+ * Trigger an action on the server
+ * Real-time feedback is handled by TaskTracker (WebSockets)
  */
-async function startAction(endpoint, data = {}) {
+async function triggerAction(endpoint, data = {}) {
     try {
         const response = await fetch(CONFIG.API_BASE_URL + endpoint, {
             method: 'POST',
@@ -849,12 +929,17 @@ async function startAction(endpoint, data = {}) {
             body: JSON.stringify(data)
         });
         const result = await response.json();
-        pollTasks();
+        console.log(`Action ${endpoint} triggered:`, result);
+        
+        // Open sidebar to show progress if not already open
+        toggleSidebar(true);
         return result;
     } catch (error) {
-        logError('startAction', error);
+        logError('triggerAction', error);
+        showToast('Action failed to start', 'error');
     }
 }
+
 
 // ============================================
 // EVENT LISTENERS
@@ -907,10 +992,18 @@ function initializeEventListeners() {
         if (Math.floor(DOM.audioPlayer.currentTime) % 5 === 0) {
             ProgressTracker.save();
         }
+
+        if (typeof updateTranscript === 'function') updateTranscript();
+        if (typeof refreshChapterProgress === 'function') refreshChapterProgress();
     });
 
     DOM.audioPlayer.addEventListener('loadedmetadata', () => {
         DOM.totalTimeEl.textContent = formatTime(DOM.audioPlayer.duration);
+        ProgressTracker.save();
+        if (typeof buildTranscriptCues === 'function' && PlayerState.transcriptText && (!PlayerState.transcriptCues || PlayerState.transcriptCues.length === 0)) {
+            buildTranscriptCues();
+        }
+        if (typeof refreshChapterProgress === 'function') refreshChapterProgress();
     });
 
     DOM.audioPlayer.addEventListener('ended', () => {
@@ -943,25 +1036,55 @@ function initializeEventListeners() {
 
     // Player Close Button
     if (DOM.playerClose) {
-        console.log('✅ Player close button found, adding event listener');
         DOM.playerClose.addEventListener('click', (e) => {
-            console.log('❌ Close button clicked!');
             e.preventDefault();
             e.stopPropagation();
             DOM.playerView.classList.remove('active');
             DOM.miniPlayer.classList.add('active');
         });
-    } else {
-        console.error('❌ Player close button NOT found!');
     }
 
     // Mini player click - open full player
     if (DOM.miniPlayer) {
         DOM.miniPlayer.addEventListener('click', (e) => {
-            // Don't trigger if clicking on control buttons
-            if (!e.target.closest('.mini-control-btn')) {
+            // Don't trigger if clicking on control buttons or title (which now has its own listener)
+            if (!e.target.closest('.mini-control-btn') && !e.target.closest('.mini-track-title')) {
                 DOM.playerView.classList.add('active');
                 DOM.miniPlayer.classList.remove('active');
+            }
+        });
+    }
+
+    // Navigation: Click episode title to go to story folder
+    if (DOM.trackTitle) {
+        DOM.trackTitle.style.cursor = 'pointer';
+        DOM.trackTitle.title = 'Go to story folder';
+        DOM.trackTitle.addEventListener('click', () => {
+            if (PlayerState.currentStory) {
+                // Minimize player
+                DOM.playerView.classList.remove('active');
+                DOM.miniPlayer.classList.add('active');
+                // Navigate to chapter list
+                if (typeof selectStoryForChapterView === 'function') {
+                    selectStoryForChapterView(PlayerState.currentStory);
+                } else {
+                    console.error('selectStoryForChapterView not found');
+                }
+            }
+        });
+    }
+
+    if (DOM.miniTrackTitle) {
+        DOM.miniTrackTitle.style.cursor = 'pointer';
+        DOM.miniTrackTitle.title = 'Go to story folder';
+        DOM.miniTrackTitle.addEventListener('click', (e) => {
+            e.stopPropagation(); // Avoid opening full player
+            if (PlayerState.currentStory) {
+                if (typeof selectStoryForChapterView === 'function') {
+                    selectStoryForChapterView(PlayerState.currentStory);
+                } else {
+                    console.error('selectStoryForChapterView not found');
+                }
             }
         });
     }
@@ -997,7 +1120,7 @@ function initializeEventListeners() {
             return;
         }
         closeModal('scrapeModal');
-        await startAction('/api/actions/scrape', {
+        await triggerAction('/api/actions/scrape', {
             url: url,
             fast_mode: DOM.scrapeFast.checked,
             headless: DOM.scrapeHeadless.checked
@@ -1010,7 +1133,7 @@ function initializeEventListeners() {
             return;
         }
         toggleSidebar(false);
-        await startAction('/api/actions/convert', { story_name: PlayerState.currentStory });
+        await triggerAction('/api/actions/convert', { story_name: PlayerState.currentStory });
     });
 
     DOM.menuCleanBtn.addEventListener('click', async () => {
@@ -1019,12 +1142,12 @@ function initializeEventListeners() {
             return;
         }
         toggleSidebar(false);
-        await startAction('/api/actions/clean', { story_name: PlayerState.currentStory });
+        await triggerAction('/api/actions/clean', { story_name: PlayerState.currentStory });
     });
 
     DOM.menuCheckUpdatesBtn.addEventListener('click', async () => {
         toggleSidebar(false);
-        await startAction('/api/actions/check-updates');
+        await triggerAction('/api/actions/check-updates');
     });
 }
 
@@ -1155,6 +1278,29 @@ async function showContinueBanner() {
 }
 
 // ============================================
+// TASK WEB SOCKET SYSTEM (Using Shared TaskTracker)
+// ============================================
+
+/**
+ * Initialize Task Tracking using TaskTracker module
+ */
+function initializeTaskTracking() {
+    if (typeof TaskTracker !== 'undefined') {
+        TaskTracker.init('taskStatus');
+        
+        // Custom callback to reload library when a task finishes
+        TaskTracker.onUpdate((task) => {
+            if (task && task.status === 'completed') {
+                showToast('Processing complete! Refreshing library...', 'success');
+                loadLibrary();
+            }
+        });
+    } else {
+        console.warn('TaskTracker module not loaded.');
+    }
+}
+
+// ============================================
 // INITIALIZATION
 // ============================================
 
@@ -1171,6 +1317,19 @@ async function initializePlayer() {
     // Setup event listeners
     initializeEventListeners();
     initializeSearch();
+    initializeTaskTracking();
+
+    // Handle initial story from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialStory = urlParams.get('story');
+    if (initialStory) {
+        console.log('Loading initial story from URL:', initialStory);
+        const storyCard = Array.from(document.querySelectorAll('.story-card'))
+            .find(card => card.dataset.name === initialStory);
+        if (storyCard) {
+            storyCard.click();
+        }
+    }
 
     console.log('✅ Audio Player Ready');
 }
@@ -1185,6 +1344,22 @@ if (document.readyState === 'loading') {
 // ============================================
 // EXPORT FOR TESTING (if needed)
 // ============================================
+// Debug Console Toggle (5 taps on title)
+let titleClicks = 0;
+const debugTitle = document.querySelector('.app-title');
+if (debugTitle) debugTitle.addEventListener('click', () => {
+    titleClicks++;
+    if (titleClicks >= 5) {
+        const debugBox = document.getElementById('debugConsole');
+        debugBox.style.display = debugBox.style.display === 'none' ? 'block' : 'none';
+        debugBox.style.pointerEvents = debugBox.style.display === 'none' ? 'none' : 'auto';
+        debugLog('Debug console toggled. Hostname: ' + window.location.hostname);
+        titleClicks = 0;
+    }
+    setTimeout(() => { if (titleClicks > 0) titleClicks--; }, 3000);
+});
+
+debugLog('App initialized. Env: ' + (CONFIG.API_BASE_URL ? 'Cloud' : 'Local'));
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         PlayerState,

@@ -1,8 +1,28 @@
 import asyncio
 import sys
 from pathlib import Path
+# pyrefly: ignore [missing-import]
 from rich.prompt import Prompt
+from rich.markup import escape
 import os
+
+# Fix Windows asyncio ProactorEventLoop WinError 10054 bug
+if sys.platform == "win32":
+    from asyncio.proactor_events import _ProactorBasePipeTransport
+    from functools import wraps
+
+    def _silence_connection_lost(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+            except (ConnectionResetError, OSError):
+                pass
+        return wrapper
+
+    _ProactorBasePipeTransport._call_connection_lost = _silence_connection_lost(
+        _ProactorBasePipeTransport._call_connection_lost
+    )
 
 # Import modules
 from modules.ui import show_banner, create_menu_table, console, CyberpunkTheme, ConsoleEventHandler
@@ -12,6 +32,7 @@ from modules.tts import TTSManager, TTSConfig
 from modules.progress_tracker import ProgressTracker
 from modules.update_checker import UpdateChecker
 from modules.tools import ToolsManager
+from modules.captioner import Captioner, CaptionerConfig, MODEL_CHOICES
 from modules.utils import extract_url
 
 class UnifiedDashboard:
@@ -34,8 +55,9 @@ class UnifiedDashboard:
             user_data_dir=str(self.browser_profile.absolute()),
             event_handler=self.event_handler
         )
-        self.tts_manager = TTSManager(config=TTSConfig(output_dir="Library"), event_handler=self.event_handler) 
+        self.tts_manager = TTSManager(config=TTSConfig(output_dir="Library"), event_handler=self.event_handler)
         self.tools_manager = ToolsManager(self.tts_manager)
+        self.captioner = Captioner(config=CaptionerConfig(model_size="base"), event_handler=self.event_handler)
 
     async def main_menu(self):
         """Displays the main menu and handles user input."""
@@ -58,6 +80,7 @@ class UnifiedDashboard:
                 "6": "🧹 Clean Text Files (Remove Promo Content)",
                 "7": "📲 Mobile Sync / Web Player",
                 "10": "☁️ Cloud Sync (Push to Firebase)",
+                "11": "💬 Generate Captions (Local Whisper)",
                 "8": "🔧 Settings (Coming Soon)",
                 "9": "🛠️ Tools & Utilities",
                 "0": "EXIT"
@@ -91,11 +114,89 @@ class UnifiedDashboard:
                 await self.flow_mobile_sync()
             elif choice == "10":
                 await self.cloud_sync_mode()
+            elif choice == "11":
+                await self.caption_mode()
             elif choice == "8":
                 console.print("[dim]Feature coming in v3.1...[/dim]")
                 await asyncio.sleep(1)
             elif choice == "9":
                 await self.tools_manager.flow_tools_menu()
+
+    async def caption_mode(self):
+        """Local speech-to-caption generation (faster-whisper)."""
+        console.clear()
+        console.print(create_menu_table({}, title="GENERATE CAPTIONS (LOCAL WHISPER)"))
+
+        if not self.captioner.is_available():
+            console.print(f"[bold red]❌ faster-whisper is not installed.[/bold red]")
+            console.print(f"[yellow]{self.captioner.install_hint()}[/yellow]")
+            await asyncio.sleep(4)
+            return
+
+        folders = [d for d in self.root_dir.iterdir() if d.is_dir() and (d / "Audios").is_dir()]
+        folders.sort(key=lambda x: x.name.lower())
+
+        if not folders:
+            console.print("[yellow]No stories with audio found in Library.[/yellow]")
+            await asyncio.sleep(2)
+            return
+
+        # Show pending count per story so the user can see where the work is.
+        pending_map = {}
+        for folder in folders:
+            pending = len(self.captioner.find_uncaptioned(folder))
+            pending_map[folder] = pending
+
+        total_pending = sum(pending_map.values())
+        console.print(f"[cyan]Stories:[/cyan]")
+        for folder in folders:
+            pending = pending_map[folder]
+            color = "yellow" if pending else "green"
+            label = f"{pending} pending" if pending else "done"
+            console.print(f"  [dim]•[/dim] [magenta]{escape(folder.name)}[/magenta] [dim]([{color}]{escape(label)}[/{color}])[/dim]")
+        console.print(f"\n[bold cyan]Total chapters pending:[/bold cyan] {total_pending}")
+
+        console.print("\n[cyan]Select Scope:[/cyan]")
+        console.print("  [bold magenta]1.[/bold magenta] Caption ALL Stories With Pending Chapters")
+        console.print("  [bold magenta]2.[/bold magenta] Select Specific Story")
+        console.print("  [bold magenta]3.[/bold magenta] Re-caption Selected Story (Overwrite)")
+        console.print("  [bold magenta]0.[/bold magenta] BACK")
+        scope = Prompt.ask("Scope", choices=["0", "1", "2", "3"], default="1")
+
+        if scope == "0":
+            return
+
+        if scope == "1":
+            targets = [f for f in folders if pending_map[f] > 0]
+            overwrite = False
+        else:
+            console.print("\n[cyan]Select Story:[/cyan]")
+            for i, folder in enumerate(folders, 1):
+                console.print(f"  [bold magenta]{i:3}.[/bold magenta] {escape(folder.name)} [dim]({pending_map[folder]} pending)[/dim]")
+            choice = Prompt.ask("Story", choices=[str(i) for i in range(1, len(folders) + 1)])
+            targets = [folders[int(choice) - 1]]
+            overwrite = (scope == "3")
+            if overwrite:
+                if Prompt.ask("Overwrite existing captions?", choices=["y", "n"], default="n") != "y":
+                    return
+
+        # Model selection — 'base' is a sensible default for clean TTS audio.
+        console.print("\n[bold cyan]Whisper Model[/bold cyan] " + " ".join(f"[magenta]{i+1}={m}[/magenta]" for i, m in enumerate(MODEL_CHOICES)))
+        model_map = {str(i + 1): m for i, m in enumerate(MODEL_CHOICES)}
+        model_choice = Prompt.ask("Select", choices=list(model_map.keys()), default="2")
+        self.captioner.config.model_size = model_map[model_choice]
+
+        console.print(f"\n[bold green]🎙️  Captioning {len(targets)} story/stories with model '{self.captioner.config.model_size}'...[/bold green]")
+        if not overwrite:
+            console.print("[dim](Only chapters without a caption file will be processed.)[/dim]")
+
+        for folder in targets:
+            console.print(f"\n[bold magenta]→ {folder.name}[/bold magenta]")
+            await asyncio.to_thread(self.captioner.process_folder, folder, overwrite)
+
+        console.print("\n[bold green]✅ Captioning complete.[/bold green]")
+        console.print("[dim]Refresh the web player to load exact-timestamp transcripts.[/dim]")
+        Prompt.ask("\n[dim]Press Enter to continue...[/dim]")
 
     async def cloud_sync_mode(self):
         console.clear()
