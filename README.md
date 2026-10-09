@@ -10,6 +10,17 @@
 
 ---
 
+## 🧭 Redesign Planning
+
+The long-term web-first redesign is documented separately for review:
+
+- [System redesign proposal](docs/SYSTEM_REDESIGN_PROPOSAL.md) — product flow, two-screen UI, durable pipeline, migration phases, and open questions.
+- [UI and backend technology recommendation](docs/TECHNOLOGY_RECOMMENDATION.md) — proposed frontend/backend stack, rationale, alternatives, and adoption sequence.
+
+These are proposals; the current implementation and dependencies have not yet been changed to match them.
+
+---
+
 ## 🚀 Key Features
 
 ### 🛠️ Core Engine
